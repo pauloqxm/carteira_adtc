@@ -1,0 +1,38 @@
+# Aplica migrações em https://rixzxbsareoyfvjmeavu.supabase.co ao dar push em main.
+#
+# Secrets obrigatórios no repositório GitHub (Settings → Secrets → Actions):
+#   SUPABASE_ACCESS_TOKEN  → https://supabase.com/dashboard/account/tokens
+#   SUPABASE_DB_PASSWORD   → Project Settings → Database → Database password (reset se não tiver)
+#
+# Opcional: crie variável de repositório SUPABASE_PROJECT_REF se o project ref mudar.
+
+name: Supabase — migrações
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/**'
+      - 'supabase/config.toml'
+  workflow_dispatch:
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Link e push (remoto)
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+        run: |
+          set -e
+          REF="${SUPABASE_PROJECT_REF:-rixzxbsareoyfvjmeavu}"
+          supabase link --project-ref "$REF" --password "$SUPABASE_DB_PASSWORD"
+          supabase db push
