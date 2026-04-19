@@ -1,0 +1,21 @@
+{
+  "name": "carteira-membro-igreja",
+  "version": "1.0.0",
+  "description": "Solicitação de carteira de membro — Supabase + Railway",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "import:csv": "node import.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.1",
+    "csv-parse": "^5.6.0",
+    "express": "^4.21.2",
+    "multer": "^1.4.5-lts.1"
+  }
+}

@@ -1,0 +1,88 @@
+# Projeto: Sistema de Solicitação de Carteira de Membro — Igreja
+
+## Stack
+- Frontend: HTML, CSS e JavaScript puro (single page, mobile-first)
+- Backend/Banco: Supabase (PostgreSQL + Storage)
+- Hospedagem: Railway (deploy automático via GitHub)
+- Linguagem: português brasileiro em toda a interface
+
+## Objetivo
+Aplicação web responsiva onde membros de uma igreja solicitam sua carteira de
+identificação eclesiástica. O usuário informa o CPF, o sistema busca os dados
+do membro no Supabase, exibe as informações, abre a câmera do celular para
+captura de foto e envia a solicitação.
+
+---
+
+## Estrutura do Supabase
+
+### Tabela `membros` (dados importados do CSV da igreja)
+| Coluna        | Tipo      | Observação                          |
+|---------------|-----------|-------------------------------------|
+| id            | uuid      | primary key, gerado automaticamente |
+| cod_membro    | integer   | unique, código original da igreja   |
+| nome_completo | text      | obrigatório                         |
+| cpf           | text      | pode ser nulo (alguns sem CPF)      |
+| data_nasc     | date      | formato ISO yyyy-mm-dd              |
+| nacionalidade | text      |                                     |
+| estado_civil  | text      | CASADO, SOLTEIRO, VIUVO, etc.       |
+| data_batismo  | date      | pode ser nulo                       |
+| cargo         | text      | Presbítero, Diácono, Auxiliar, etc. |
+| sexo          | text      | Masculino / Feminino                |
+| created_at    | timestamp | gerado automaticamente              |
+
+### Tabela `solicitacoes`
+| Coluna             | Tipo      | Observação                      |
+|--------------------|-----------|---------------------------------|
+| id                 | uuid      | primary key                     |
+| membro_id          | uuid      | foreign key → membros.id        |
+| foto_url           | text      | URL pública do Supabase Storage |
+| protocolo          | text      | único, padrão ECL-XXXXXX        |
+| status_solicitacao | text      | pendente / aprovada / rejeitada |
+| created_at         | timestamp | gerado automaticamente          |
+
+### Supabase Storage
+- Bucket: `fotos-membros`
+- Caminho: `/{cod_membro}/{timestamp}.jpg`
+- Leitura: pública — Escrita: autenticada
+
+---
+
+## Fluxo da aplicação
+1. Usuário digita o CPF (máscara automática: 000.000.000-00)
+2. Validação do CPF (formato + dígitos verificadores)
+3. Busca na tabela `membros` pelo campo `cpf`
+4. Se encontrado: exibe nome_completo, data_nasc, data_batismo, cargo, sexo
+5. Se não encontrado: mensagem de erro clara
+6. Usuário toca no botão de câmera → abre câmera frontal (`capture="user"`)
+7. Preview da foto para confirmação, com opção de refazer
+8. Verificar se já existe solicitação `pendente` para o membro antes de criar nova
+9. Envio: foto → Supabase Storage, URL + dados → tabela `solicitacoes`
+10. Exibir protocolo gerado na tela de sucesso
+
+---
+
+## Regras de negócio
+- Um membro só pode ter uma solicitação com status `pendente` por vez
+- CPF deve ser validado (formato e dígitos verificadores) antes da busca
+- Membros sem CPF cadastrado não conseguem usar o sistema (orientar a procurar a secretaria)
+- Foto: máximo 5 MB, formatos aceitos: JPG, PNG, WEBP
+- Protocolo gerado no padrão `ECL-` + timestamp 6 dígitos
+- Campos exibidos na tela: Nome, Data de nascimento, Data de batismo, Cargo, Sexo
+
+---
+
+## Organização de arquivos
+/
+├── index.html       ← tela principal da aplicação
+├── style.css        ← estilos mobile-first
+├── app.js           ← lógica principal e fluxo
+├── supabase.js      ← inicialização e funções do Supabase
+├── camera.js        ← captura, preview e upload da foto
+├── validacao.js     ← validação de CPF e regras de negócio
+├── import.js        ← script único para importar o CSV (rodar uma vez)
+├── server.js        ← servidor Express para Railway
+├── package.json
+├── .env             ← variáveis de ambiente (não commitar)
+└── .gitignore
+
