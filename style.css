@@ -289,3 +289,16 @@ body {
 .rodape p {
   margin: 0;
 }
+
+.rodape__admin {
+  margin-top: 0.65rem;
+}
+
+.rodape__admin a {
+  color: var(--cor-prim);
+  text-decoration: none;
+}
+
+.rodape__admin a:hover {
+  text-decoration: underline;
+}

@@ -1,5 +1,7 @@
 const STORAGE_KEY = 'carteira_admin_token';
 
+let loginMode = 'token';
+
 const el = (id) => document.getElementById(id);
 
 function getToken() {
@@ -41,7 +43,6 @@ function escapeHtml(s) {
     .replace(/"/g, '&quot;');
 }
 
-/** URL segura para atributo src/href (apenas http/https). */
 function urlFoto(u) {
   if (!u || typeof u !== 'string') return '';
   try {
@@ -54,13 +55,18 @@ function urlFoto(u) {
 }
 
 async function api(path, options = {}) {
-  const token = getToken();
+  const { skipAuth, ...fetchOpts } = options;
+  const token = skipAuth ? '' : getToken();
   const headers = {
-    'Content-Type': 'application/json',
-    'X-Admin-Token': token,
-    ...options.headers,
+    ...fetchOpts.headers,
   };
-  const res = await fetch(path, { ...options, headers });
+  if (!(fetchOpts.body instanceof FormData)) {
+    headers['Content-Type'] = 'application/json';
+  }
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+  const res = await fetch(path, { ...fetchOpts, headers });
   const json = await res.json().catch(() => ({}));
   if (!res.ok) {
     const msg = json.mensagem || json.error || `Erro ${res.status}`;
@@ -77,21 +83,38 @@ async function fetchLista() {
   return api(`/api/admin/solicitacoes${q}`);
 }
 
-function mostrarLogin(erro) {
+function setSairVisivel(visivel) {
+  el('btn-sair-top').hidden = !visivel;
+}
+
+function mostrarLogin(erro, alvo) {
   el('sec-login').hidden = false;
   el('sec-painel').hidden = true;
-  const m = el('login-msg');
+  setSairVisivel(false);
+  const geral = el('login-msg');
+  geral.hidden = true;
+  const mp = el('login-msg-pass');
+  const mt = el('login-msg-token');
+  mp.hidden = true;
+  mt.hidden = true;
   if (erro) {
-    m.textContent = erro;
-    m.hidden = false;
-  } else {
-    m.hidden = true;
+    if (alvo === 'pass') {
+      mp.textContent = erro;
+      mp.hidden = false;
+    } else if (alvo === 'token') {
+      mt.textContent = erro;
+      mt.hidden = false;
+    } else {
+      geral.textContent = erro;
+      geral.hidden = false;
+    }
   }
 }
 
 function mostrarPainel() {
   el('sec-login').hidden = true;
   el('sec-painel').hidden = false;
+  setSairVisivel(true);
 }
 
 function renderTabela(itens) {
@@ -149,27 +172,26 @@ function renderTabela(itens) {
 
     const tdAc = document.createElement('td');
     tdAc.className = 'admin-acoes';
-    for (const { label, status, cls } of acoesPara(row.status_solicitacao)) {
+    for (const ac of acoesLinha()) {
       const b = document.createElement('button');
       b.type = 'button';
-      b.className = `btn btn--mini ${cls}`;
-      b.textContent = label;
-      b.addEventListener('click', () => onAcao(row.id, status));
+      b.className = `btn btn--mini ${ac.cls}`;
+      b.textContent = ac.label;
+      b.addEventListener('click', () => onAcao(row.id, ac));
       tdAc.appendChild(b);
     }
-    if (!tdAc.children.length) tdAc.textContent = '—';
     tr.appendChild(tdAc);
 
     tbody.appendChild(tr);
   }
 }
 
-function acoesPara(st) {
-  const out = [];
-  if (st !== 'aprovada') out.push({ label: 'Aprovar', status: 'aprovada', cls: 'btn--primario' });
-  if (st !== 'rejeitada') out.push({ label: 'Rejeitar', status: 'rejeitada', cls: 'btn--secundario' });
-  if (st !== 'pendente') out.push({ label: 'Pendente', status: 'pendente', cls: 'btn--fantasma' });
-  return out;
+function acoesLinha() {
+  return [
+    { label: 'Aprovar', tipo: 'patch', status: 'aprovada', cls: 'btn--primario' },
+    { label: 'Rejeitar', tipo: 'patch', status: 'rejeitada', cls: 'btn--secundario' },
+    { label: 'Excluir', tipo: 'delete', cls: 'btn--excluir' },
+  ];
 }
 
 async function carregarLista() {
@@ -184,7 +206,7 @@ async function carregarLista() {
     tbody.innerHTML = '';
     if (e.status === 401 || String(e.message).includes('Não autorizado')) {
       setToken('');
-      mostrarLogin('Sessão expirada ou token inválido.');
+      mostrarLogin('Sessão expirada ou acesso inválido.', loginMode === 'password' ? 'pass' : 'token');
       return;
     }
     msg.textContent = e.message || 'Erro ao carregar.';
@@ -192,12 +214,22 @@ async function carregarLista() {
   }
 }
 
-async function onAcao(id, status) {
-  if (!confirm(`Alterar status para "${status}"?`)) return;
+async function onAcao(id, ac) {
+  if (ac.tipo === 'delete') {
+    if (!confirm('Excluir esta solicitação permanentemente? Esta ação não pode ser desfeita.')) return;
+    try {
+      await api(`/api/admin/solicitacoes/${id}`, { method: 'DELETE' });
+      await carregarLista();
+    } catch (e) {
+      alert(e.message || 'Falha ao excluir.');
+    }
+    return;
+  }
+  if (!confirm(`Alterar status para "${ac.status}"?`)) return;
   try {
     await api(`/api/admin/solicitacoes/${id}`, {
       method: 'PATCH',
-      body: JSON.stringify({ status_solicitacao: status }),
+      body: JSON.stringify({ status_solicitacao: ac.status }),
     });
     await carregarLista();
   } catch (e) {
@@ -205,7 +237,37 @@ async function onAcao(id, status) {
   }
 }
 
-function init() {
+function limparCamposLogin() {
+  el('admin-token-input').value = '';
+  el('admin-user').value = '';
+  el('admin-pass').value = '';
+}
+
+function sair() {
+  setToken('');
+  limparCamposLogin();
+  mostrarLogin();
+}
+
+async function carregarConfigLogin() {
+  const cfg = await fetch('/api/admin/config').then((r) => r.json());
+  loginMode = cfg.loginMode === 'password' ? 'password' : 'token';
+  el('login-password-block').hidden = loginMode !== 'password';
+  el('login-token-block').hidden = loginMode !== 'token';
+  if (loginMode === 'password') {
+    el('admin-user').value = cfg.defaultUsername || 'admin';
+  }
+}
+
+async function init() {
+  try {
+    await carregarConfigLogin();
+  } catch {
+    loginMode = 'token';
+    el('login-password-block').hidden = true;
+    el('login-token-block').hidden = false;
+  }
+
   if (getToken()) {
     mostrarPainel();
     carregarLista();
@@ -213,10 +275,33 @@ function init() {
     mostrarLogin();
   }
 
-  el('btn-login').addEventListener('click', async () => {
+  el('btn-login-pass').addEventListener('click', async () => {
+    const username = el('admin-user').value.trim();
+    const password = el('admin-pass').value;
+    if (!username || !password) {
+      mostrarLogin('Preencha utilizador e senha.', 'pass');
+      return;
+    }
+    try {
+      const { token } = await api('/api/admin/login', {
+        method: 'POST',
+        body: JSON.stringify({ username, password }),
+        skipAuth: true,
+      });
+      setToken(token);
+      const { itens } = await fetchLista();
+      mostrarPainel();
+      renderTabela(itens);
+    } catch (e) {
+      setToken('');
+      mostrarLogin(e.message || 'Erro ao entrar.', 'pass');
+    }
+  });
+
+  el('btn-login-token').addEventListener('click', async () => {
     const t = el('admin-token-input').value.trim();
     if (!t) {
-      mostrarLogin('Informe o token.');
+      mostrarLogin('Informe o token.', 'token');
       return;
     }
     setToken(t);
@@ -230,15 +315,14 @@ function init() {
         e.status === 401 || String(e.message).includes('Não autorizado')
           ? 'Token recusado pelo servidor.'
           : e.message || 'Erro ao validar.',
+        'token',
       );
     }
   });
 
-  el('btn-sair').addEventListener('click', () => {
-    setToken('');
-    el('admin-token-input').value = '';
-    mostrarLogin();
-  });
+  const sairHandler = () => sair();
+  el('btn-sair').addEventListener('click', sairHandler);
+  el('btn-sair-top').addEventListener('click', sairHandler);
 
   el('btn-atualizar').addEventListener('click', () => carregarLista());
   el('filtro-status').addEventListener('change', () => carregarLista());

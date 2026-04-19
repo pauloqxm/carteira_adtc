@@ -1,3 +1,19 @@
+.admin-header-flex {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.btn-sair-top {
+  flex-shrink: 0;
+  width: auto;
+  min-width: 10rem;
+}
+
 .admin-wrap {
   max-width: 1100px;
   margin: 0 auto;
@@ -81,6 +97,16 @@
   width: auto;
   padding: 0.4rem 0.65rem;
   font-size: 0.8rem;
+}
+
+.btn--excluir {
+  background: rgba(229, 115, 115, 0.18);
+  color: var(--cor-erro);
+  border: 1px solid rgba(229, 115, 115, 0.45);
+}
+
+.btn--excluir:hover:not(:disabled) {
+  background: rgba(229, 115, 115, 0.28);
 }
 
 .badge {

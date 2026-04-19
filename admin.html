@@ -10,22 +10,44 @@
 </head>
 <body>
   <header class="topo">
-    <div class="topo__inner admin-wrap">
-      <h1 class="topo__titulo">Painel administrativo</h1>
-      <p class="topo__sub">Solicitações de carteira de membro</p>
+    <div class="topo__inner admin-wrap admin-header-flex">
+      <div>
+        <h1 class="topo__titulo">Painel administrativo</h1>
+        <p class="topo__sub">Solicitações de carteira de membro</p>
+      </div>
+      <button type="button" id="btn-sair-top" class="btn btn--fantasma btn-sair-top" hidden>Sair da sessão</button>
     </div>
   </header>
 
   <main class="admin-wrap">
     <section id="sec-login" class="card admin-login">
       <h2 class="card__titulo">Acesso</h2>
-      <p class="card__texto">Informe o token configurado no servidor (<code>ADMIN_SECRET</code>).</p>
-      <label class="campo">
-        <span class="campo__label">Token</span>
-        <input id="admin-token-input" class="campo__input" type="password" autocomplete="current-password" />
-      </label>
+
+      <div id="login-password-block" hidden>
+        <p class="card__texto">Entre com o utilizador e a senha da secretaria.</p>
+        <label class="campo">
+          <span class="campo__label">Utilizador</span>
+          <input id="admin-user" class="campo__input" type="text" autocomplete="username" />
+        </label>
+        <label class="campo">
+          <span class="campo__label">Senha</span>
+          <input id="admin-pass" class="campo__input" type="password" autocomplete="current-password" />
+        </label>
+        <p id="login-msg-pass" class="admin-msg" hidden></p>
+        <button type="button" id="btn-login-pass" class="btn btn--primario">Entrar</button>
+      </div>
+
+      <div id="login-token-block" hidden>
+        <p class="card__texto">Informe o token configurado no servidor (<code>ADMIN_SECRET</code>).</p>
+        <label class="campo">
+          <span class="campo__label">Token</span>
+          <input id="admin-token-input" class="campo__input" type="password" autocomplete="off" />
+        </label>
+        <p id="login-msg-token" class="admin-msg" hidden></p>
+        <button type="button" id="btn-login-token" class="btn btn--primario">Entrar</button>
+      </div>
+
       <p id="login-msg" class="admin-msg" hidden></p>
-      <button type="button" id="btn-login" class="btn btn--primario">Entrar</button>
     </section>
 
     <section id="sec-painel" class="card" hidden>
@@ -40,7 +62,7 @@
           </select>
         </label>
         <button type="button" id="btn-atualizar" class="btn btn--secundario btn--mini">Atualizar lista</button>
-        <button type="button" id="btn-sair" class="btn btn--fantasma btn--mini">Sair</button>
+        <button type="button" id="btn-sair" class="btn btn--fantasma btn--mini">Sair da sessão</button>
       </div>
       <p id="lista-msg" class="admin-msg" hidden></p>
       <div class="admin-table-wrap">

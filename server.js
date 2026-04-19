@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import fs from 'fs';
 import express from 'express';
 import path from 'path';
@@ -37,8 +38,71 @@ const SUPABASE_URL = process.env.SUPABASE_URL || '';
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || '';
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 const ADMIN_SECRET = process.env.ADMIN_SECRET || '';
+const ADMIN_PASSWORD_SHA256 = (process.env.ADMIN_PASSWORD_SHA256 || '').trim().toLowerCase();
+const ADMIN_USERNAME = (process.env.ADMIN_USERNAME || 'admin').trim();
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const ADMIN_SESSION_MS = 12 * 60 * 60 * 1000;
+
+function usePasswordLogin() {
+  return Boolean(ADMIN_PASSWORD_SHA256);
+}
+
+function timingSafeHashEqualHex(hexA, hexB) {
+  try {
+    const a = Buffer.from(String(hexA).toLowerCase(), 'hex');
+    const b = Buffer.from(String(hexB).toLowerCase(), 'hex');
+    if (a.length !== b.length || a.length !== 32) return false;
+    return crypto.timingSafeEqual(a, b);
+  } catch {
+    return false;
+  }
+}
+
+function timingSafeEqualB64Url(a, b) {
+  try {
+    const ba = Buffer.from(String(a), 'utf8');
+    const bb = Buffer.from(String(b), 'utf8');
+    if (ba.length !== bb.length) return false;
+    return crypto.timingSafeEqual(ba, bb);
+  } catch {
+    return false;
+  }
+}
+
+function signAdminJwt() {
+  const payload = { v: 1, sub: 'admin', exp: Date.now() + ADMIN_SESSION_MS };
+  const payloadB64 = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  const sig = crypto.createHmac('sha256', ADMIN_SECRET).update(payloadB64).digest('base64url');
+  return `${payloadB64}.${sig}`;
+}
+
+function verifyAdminJwt(token) {
+  if (!token || !ADMIN_SECRET) return null;
+  const dot = token.lastIndexOf('.');
+  if (dot <= 0) return null;
+  const payloadB64 = token.slice(0, dot);
+  const sig = token.slice(dot + 1);
+  const expectedSig = crypto.createHmac('sha256', ADMIN_SECRET).update(payloadB64).digest('base64url');
+  if (!timingSafeEqualB64Url(sig, expectedSig)) return null;
+  let payload;
+  try {
+    payload = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf8'));
+  } catch {
+    return null;
+  }
+  if (payload.sub !== 'admin' || typeof payload.exp !== 'number') return null;
+  if (payload.exp < Date.now()) return null;
+  return payload;
+}
+
+function extractAdminToken(req) {
+  const headerToken = req.headers['x-admin-token'];
+  const auth = req.headers.authorization;
+  if (typeof headerToken === 'string' && headerToken) return headerToken.trim();
+  if (typeof auth === 'string' && auth.startsWith('Bearer ')) return auth.slice(7).trim();
+  return '';
+}
 
 if (!SUPABASE_URL) {
   console.warn('Aviso: SUPABASE_URL não definida.');
@@ -72,21 +136,58 @@ function gerarProtocolo() {
 }
 
 function requireAdmin(req, res, next) {
+  const token = extractAdminToken(req);
+  if (!token) {
+    return res.status(401).json({ mensagem: 'Não autorizado.' });
+  }
+
+  if (usePasswordLogin()) {
+    if (!ADMIN_SECRET) {
+      return res.status(503).json({
+        mensagem: 'Defina ADMIN_SECRET no servidor para assinar a sessão do painel.',
+      });
+    }
+    if (!verifyAdminJwt(token)) {
+      return res.status(401).json({ mensagem: 'Não autorizado.' });
+    }
+    return next();
+  }
+
   if (!ADMIN_SECRET) {
     return res.status(503).json({
       mensagem: 'Painel admin desativado: defina ADMIN_SECRET no servidor (Railway / .env).',
     });
   }
-  const headerToken = req.headers['x-admin-token'];
-  const auth = req.headers.authorization;
-  const token =
-    (typeof headerToken === 'string' && headerToken) ||
-    (typeof auth === 'string' && auth.startsWith('Bearer ') ? auth.slice(7) : '');
-  if (!token || token !== ADMIN_SECRET) {
+  if (token !== ADMIN_SECRET) {
     return res.status(401).json({ mensagem: 'Não autorizado.' });
   }
   next();
 }
+
+app.get('/api/admin/config', (_req, res) => {
+  res.json({
+    loginMode: usePasswordLogin() ? 'password' : 'token',
+    defaultUsername: ADMIN_USERNAME,
+  });
+});
+
+app.post('/api/admin/login', (req, res) => {
+  if (!usePasswordLogin()) {
+    return res.status(400).json({ mensagem: 'Login por senha não está ativo (defina ADMIN_PASSWORD_SHA256).' });
+  }
+  if (!ADMIN_SECRET) {
+    return res.status(503).json({ mensagem: 'ADMIN_SECRET é obrigatório para criar a sessão.' });
+  }
+  const username = String(req.body?.username || '').trim();
+  const password = String(req.body?.password ?? '');
+  const hash = crypto.createHash('sha256').update(password, 'utf8').digest('hex');
+  const okUser = username === ADMIN_USERNAME;
+  const okPass = timingSafeHashEqualHex(hash, ADMIN_PASSWORD_SHA256);
+  if (!okUser || !okPass) {
+    return res.status(401).json({ mensagem: 'Utilizador ou senha incorretos.' });
+  }
+  res.json({ token: signAdminJwt() });
+});
 
 app.get('/api/admin/solicitacoes', requireAdmin, async (req, res) => {
   if (!supabaseAdmin) {
@@ -152,6 +253,25 @@ app.patch('/api/admin/solicitacoes/:id', requireAdmin, async (req, res) => {
     return res.status(404).json({ mensagem: 'Solicitação não encontrada.' });
   }
   res.json({ ok: true, solicitacao: data });
+});
+
+app.delete('/api/admin/solicitacoes/:id', requireAdmin, async (req, res) => {
+  if (!supabaseAdmin) {
+    return res.status(500).json({ mensagem: 'Servidor sem credencial Supabase.' });
+  }
+  const { id } = req.params;
+  if (!UUID_RE.test(id)) {
+    return res.status(400).json({ mensagem: 'ID inválido.' });
+  }
+  const { data: removidos, error } = await supabaseAdmin.from('solicitacoes').delete().eq('id', id).select('id');
+  if (error) {
+    console.error(error);
+    return res.status(500).json({ mensagem: 'Erro ao excluir.' });
+  }
+  if (!removidos?.length) {
+    return res.status(404).json({ mensagem: 'Solicitação não encontrada.' });
+  }
+  res.json({ ok: true });
 });
 
 app.get('/admin', (_req, res) => {
