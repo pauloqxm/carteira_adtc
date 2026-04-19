@@ -36,6 +36,9 @@ const PORT = Number(process.env.PORT) || 3000;
 const SUPABASE_URL = process.env.SUPABASE_URL || '';
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || '';
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const ADMIN_SECRET = process.env.ADMIN_SECRET || '';
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 if (!SUPABASE_URL) {
   console.warn('Aviso: SUPABASE_URL não definida.');
@@ -67,6 +70,93 @@ function gerarProtocolo() {
   const suffix = String(Date.now()).slice(-6);
   return `ECL-${suffix}`;
 }
+
+function requireAdmin(req, res, next) {
+  if (!ADMIN_SECRET) {
+    return res.status(503).json({
+      mensagem: 'Painel admin desativado: defina ADMIN_SECRET no servidor (Railway / .env).',
+    });
+  }
+  const headerToken = req.headers['x-admin-token'];
+  const auth = req.headers.authorization;
+  const token =
+    (typeof headerToken === 'string' && headerToken) ||
+    (typeof auth === 'string' && auth.startsWith('Bearer ') ? auth.slice(7) : '');
+  if (!token || token !== ADMIN_SECRET) {
+    return res.status(401).json({ mensagem: 'Não autorizado.' });
+  }
+  next();
+}
+
+app.get('/api/admin/solicitacoes', requireAdmin, async (req, res) => {
+  if (!supabaseAdmin) {
+    return res.status(500).json({ mensagem: 'Servidor sem credencial Supabase.' });
+  }
+  const statusFilter = req.query.status;
+  let q = supabaseAdmin
+    .from('solicitacoes')
+    .select('id, protocolo, status_solicitacao, foto_url, created_at, membro_id')
+    .order('created_at', { ascending: false });
+  if (statusFilter && ['pendente', 'aprovada', 'rejeitada'].includes(String(statusFilter))) {
+    q = q.eq('status_solicitacao', statusFilter);
+  }
+  const { data: sols, error } = await q;
+  if (error) {
+    console.error(error);
+    return res.status(500).json({ mensagem: 'Erro ao listar solicitações.' });
+  }
+  const lista = sols || [];
+  const ids = [...new Set(lista.map((s) => s.membro_id).filter(Boolean))];
+  let map = {};
+  if (ids.length) {
+    const { data: mems, error: e2 } = await supabaseAdmin
+      .from('membros')
+      .select('id, nome_completo, cod_membro, cpf')
+      .in('id', ids);
+    if (e2) {
+      console.error(e2);
+      return res.status(500).json({ mensagem: 'Erro ao carregar dados dos membros.' });
+    }
+    map = Object.fromEntries((mems || []).map((m) => [m.id, m]));
+  }
+  const itens = lista.map((s) => ({
+    ...s,
+    membros: map[s.membro_id] || null,
+  }));
+  res.json({ itens });
+});
+
+app.patch('/api/admin/solicitacoes/:id', requireAdmin, async (req, res) => {
+  if (!supabaseAdmin) {
+    return res.status(500).json({ mensagem: 'Servidor sem credencial Supabase.' });
+  }
+  const { id } = req.params;
+  if (!UUID_RE.test(id)) {
+    return res.status(400).json({ mensagem: 'ID inválido.' });
+  }
+  const st = req.body?.status_solicitacao;
+  if (!['pendente', 'aprovada', 'rejeitada'].includes(st)) {
+    return res.status(400).json({ mensagem: 'status_solicitacao inválido.' });
+  }
+  const { data, error } = await supabaseAdmin
+    .from('solicitacoes')
+    .update({ status_solicitacao: st })
+    .eq('id', id)
+    .select('id, protocolo, status_solicitacao')
+    .maybeSingle();
+  if (error) {
+    console.error(error);
+    return res.status(500).json({ mensagem: 'Erro ao atualizar.' });
+  }
+  if (!data) {
+    return res.status(404).json({ mensagem: 'Solicitação não encontrada.' });
+  }
+  res.json({ ok: true, solicitacao: data });
+});
+
+app.get('/admin', (_req, res) => {
+  res.sendFile(path.join(__dirname, 'admin.html'));
+});
 
 app.post('/api/solicitacao', upload.single('foto'), async (req, res) => {
   if (!supabaseAdmin) {
@@ -161,7 +251,10 @@ app.post('/api/solicitacao', upload.single('foto'), async (req, res) => {
 
 app.use(express.static(__dirname));
 
-app.get('*', (_req, res) => {
+app.get('*', (req, res) => {
+  if (req.path.startsWith('/api/')) {
+    return res.status(404).json({ mensagem: 'Não encontrado.' });
+  }
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 

@@ -1,0 +1,136 @@
+.admin-wrap {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 1rem 1rem 2.5rem;
+}
+
+.admin-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.admin-toolbar label {
+  font-size: 0.85rem;
+  color: var(--cor-texto-mudo);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.admin-toolbar select {
+  padding: 0.45rem 0.65rem;
+  border-radius: 8px;
+  border: 1px solid var(--cor-borda);
+  background: #0f1c17;
+  color: var(--cor-texto);
+  font-family: inherit;
+}
+
+.admin-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--cor-borda);
+  border-radius: var(--raio);
+  background: var(--cor-cartao);
+}
+
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+
+.admin-table th,
+.admin-table td {
+  padding: 0.65rem 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  vertical-align: middle;
+}
+
+.admin-table th {
+  color: var(--cor-texto-mudo);
+  font-weight: 600;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.admin-table tr:last-child td {
+  border-bottom: none;
+}
+
+.admin-foto {
+  width: 48px;
+  height: 48px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--cor-borda);
+  background: #0a1410;
+}
+
+.admin-acoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.btn--mini {
+  width: auto;
+  padding: 0.4rem 0.65rem;
+  font-size: 0.8rem;
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.badge--pendente {
+  background: rgba(144, 202, 249, 0.2);
+  color: var(--cor-info);
+}
+
+.badge--aprovada {
+  background: rgba(165, 214, 167, 0.2);
+  color: var(--cor-ok);
+}
+
+.badge--rejeitada {
+  background: rgba(229, 115, 115, 0.2);
+  color: var(--cor-erro);
+}
+
+.admin-login {
+  max-width: 400px;
+  margin: 2rem auto;
+}
+
+.admin-msg {
+  font-size: 0.88rem;
+  margin: 0 0 0.75rem;
+  color: var(--cor-erro);
+}
+
+.admin-msg--ok {
+  color: var(--cor-ok);
+}
+
+.admin-cpf {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .admin-table th:nth-child(4),
+  .admin-table td:nth-child(4) {
+    display: none;
+  }
+}

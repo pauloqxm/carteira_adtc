@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>Admin — Solicitações de carteira</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="admin.css" />
+</head>
+<body>
+  <header class="topo">
+    <div class="topo__inner admin-wrap">
+      <h1 class="topo__titulo">Painel administrativo</h1>
+      <p class="topo__sub">Solicitações de carteira de membro</p>
+    </div>
+  </header>
+
+  <main class="admin-wrap">
+    <section id="sec-login" class="card admin-login">
+      <h2 class="card__titulo">Acesso</h2>
+      <p class="card__texto">Informe o token configurado no servidor (<code>ADMIN_SECRET</code>).</p>
+      <label class="campo">
+        <span class="campo__label">Token</span>
+        <input id="admin-token-input" class="campo__input" type="password" autocomplete="current-password" />
+      </label>
+      <p id="login-msg" class="admin-msg" hidden></p>
+      <button type="button" id="btn-login" class="btn btn--primario">Entrar</button>
+    </section>
+
+    <section id="sec-painel" class="card" hidden>
+      <div class="admin-toolbar">
+        <label>
+          Filtrar
+          <select id="filtro-status">
+            <option value="">Todos</option>
+            <option value="pendente">Pendente</option>
+            <option value="aprovada">Aprovada</option>
+            <option value="rejeitada">Rejeitada</option>
+          </select>
+        </label>
+        <button type="button" id="btn-atualizar" class="btn btn--secundario btn--mini">Atualizar lista</button>
+        <button type="button" id="btn-sair" class="btn btn--fantasma btn--mini">Sair</button>
+      </div>
+      <p id="lista-msg" class="admin-msg" hidden></p>
+      <div class="admin-table-wrap">
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th>Foto</th>
+              <th>Protocolo</th>
+              <th>Membro</th>
+              <th>CPF</th>
+              <th>Data</th>
+              <th>Status</th>
+              <th>Ações</th>
+            </tr>
+          </thead>
+          <tbody id="tbody-solicitacoes"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <footer class="rodape">
+    <p><a href="/" style="color: inherit">← Voltar ao formulário público</a></p>
+  </footer>
+
+  <script type="module" src="admin.js"></script>
+</body>
+</html>
