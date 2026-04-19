@@ -1,15 +1,16 @@
 /**
  * Importação única do CSV para a tabela membros.
- * Uso: defina SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY no .env e rode:
- *   npm run import:csv
+ * Requer Node 18+ (fetch nativo). Não depende de node_modules.
+ *
+ * Uso: no .env (ou ambiente), SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY e rode:
+ *   node import.js
+ *   ou: npm run import:csv
  *
  * CPFs são gravados somente com dígitos (ou null se vazio no CSV).
  */
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { parse } from 'csv-parse/sync';
-import { createClient } from '@supabase/supabase-js';
 import { apenasDigitosCpf } from './validacao.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -41,13 +42,96 @@ const SUPABASE_URL = process.env.SUPABASE_URL;
 const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 if (!SUPABASE_URL || !KEY) {
-  console.error('Defina SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY no .env');
+  console.error('Defina SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY no .env (ou no ambiente).');
   process.exit(1);
 }
 
-const sb = createClient(SUPABASE_URL, KEY, {
-  auth: { persistSession: false, autoRefreshToken: false },
-});
+const REST_BASE = `${SUPABASE_URL.replace(/\/$/, '')}/rest/v1`;
+
+/** Upsert via PostgREST — não exige pacote npm (útil se node_modules falhar no Drive). */
+async function upsertMembrosChunk(chunk) {
+  const url = `${REST_BASE}/membros?on_conflict=cod_membro`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      apikey: KEY,
+      Authorization: `Bearer ${KEY}`,
+      'Content-Type': 'application/json',
+      Prefer: 'resolution=merge-duplicates,return=minimal',
+    },
+    body: JSON.stringify(chunk),
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`REST ${res.status}: ${body}`);
+  }
+}
+
+/** CSV com vírgulas e campos entre aspas (RFC básico), sem dependências. */
+function parseCsvMatrix(text) {
+  const matrix = [];
+  let row = [];
+  let field = '';
+  let inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (text[i + 1] === '"') {
+          field += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        field += c;
+      }
+      continue;
+    }
+    if (c === '"') {
+      inQuotes = true;
+      continue;
+    }
+    if (c === ',') {
+      row.push(field);
+      field = '';
+      continue;
+    }
+    if (c === '\n' || c === '\r') {
+      row.push(field);
+      field = '';
+      if (row.some((cell) => String(cell).trim() !== '')) {
+        matrix.push(row.map((s) => String(s).trim()));
+      }
+      row = [];
+      if (c === '\r' && text[i + 1] === '\n') i++;
+      continue;
+    }
+    field += c;
+  }
+  if (field.length || row.length) {
+    row.push(field);
+    if (row.some((cell) => String(cell).trim() !== '')) {
+      matrix.push(row.map((s) => String(s).trim()));
+    }
+  }
+  return matrix;
+}
+
+function matrixToObjects(matrix) {
+  if (matrix.length < 2) return [];
+  const headers = matrix[0];
+  const out = [];
+  for (let r = 1; r < matrix.length; r++) {
+    const line = matrix[r];
+    const o = {};
+    for (let c = 0; c < headers.length; c++) {
+      o[headers[c]] = line[c] ?? '';
+    }
+    out.push(o);
+  }
+  return out;
+}
 
 function parseDataBR(s) {
   if (s == null || String(s).trim() === '') return null;
@@ -90,7 +174,7 @@ async function main() {
     process.exit(1);
   }
   const texto = fs.readFileSync(csvPath, 'utf8');
-  const rows = parse(texto, { columns: true, skip_empty_lines: true, trim: true });
+  const rows = matrixToObjects(parseCsvMatrix(texto));
 
   const registros = [];
   for (const row of rows) {
@@ -103,9 +187,10 @@ async function main() {
   const chunkSize = 200;
   for (let i = 0; i < registros.length; i += chunkSize) {
     const chunk = registros.slice(i, i + chunkSize);
-    const { error } = await sb.from('membros').upsert(chunk, { onConflict: 'cod_membro' });
-    if (error) {
-      console.error('Erro no lote', i, error);
+    try {
+      await upsertMembrosChunk(chunk);
+    } catch (err) {
+      console.error('Erro no lote', i, err.message || err);
       process.exit(1);
     }
     console.log('Importados', Math.min(i + chunkSize, registros.length), '/', registros.length);
