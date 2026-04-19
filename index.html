@@ -47,13 +47,35 @@
       </dl>
 
       <div class="foto-bloco">
-        <p class="campo__label">Foto para a carteira</p>
+        <p class="campo__label">Foto para a carteira (formato 3×4)</p>
+        <p class="foto-guia-texto">
+          A foto será ajustada para o formato <strong>3×4</strong> (retrato), padrão de carteirinha. Enquadre
+          <strong>rosto e ombros</strong> ao centro, olhando para a câmera, como no exemplo abaixo.
+        </p>
+        <div class="foto-exemplo" aria-hidden="true">
+          <p class="foto-exemplo-legenda">Exemplo de enquadramento</p>
+          <div class="foto-exemplo-moldura">
+            <div class="foto-exemplo-conteudo">
+              <div class="foto-exemplo-rosto"></div>
+              <div class="foto-exemplo-ombros"></div>
+            </div>
+            <span class="foto-exemplo-3x4">3 × 4</span>
+          </div>
+        </div>
         <input type="file" id="input-foto" hidden />
         <div class="foto-acoes">
           <button type="button" id="btn-capturar" class="btn btn--secundario">Abrir câmera / escolher foto</button>
           <button type="button" id="btn-refazer-foto" class="btn btn--fantasma" hidden>Refazer foto</button>
         </div>
-        <img id="preview-foto" class="preview" alt="Pré-visualização da foto" hidden />
+        <div id="foto-preview-wrap" class="foto-preview-wrap" hidden>
+          <p class="foto-preview-legenda">Pré-visualização (3×4)</p>
+          <div class="foto-moldura-3x4">
+            <img id="preview-foto" class="preview preview--3x4" alt="Pré-visualização da foto" />
+            <div class="foto-overlay-enquadramento">
+              <div class="foto-overlay-elipse"></div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div class="botoes-linha">
