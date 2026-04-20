@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#1a3a2f" />
+  <title>Verificação — Carteira de membro</title>
+  <link rel="stylesheet" href="/style.css" />
+  <style>
+    .membro-qr-wrap {
+      max-width: 38rem;
+      margin: 2rem auto;
+      padding: 0 1rem 2rem;
+    }
+    .membro-qr-wrap .card__titulo {
+      margin-bottom: 0.75rem;
+    }
+    .membro-qr-texto {
+      font-size: 1.05rem;
+      line-height: 1.55;
+    }
+    .membro-qr-texto strong {
+      font-weight: 700;
+      display: inline;
+    }
+  </style>
+</head>
+<body>
+  <header class="topo">
+    <div class="topo__inner">
+      <h1 class="topo__titulo">Verificação de carteira</h1>
+      <p class="topo__sub">Leitura do QR Code</p>
+    </div>
+  </header>
+
+  <main class="conteudo membro-qr-wrap">
+    <section class="card">
+      <h2 class="card__titulo">Resultado</h2>
+      <p id="membro-qr-msg" class="card__texto membro-qr-texto">A carregar…</p>
+      <p class="card__texto card__texto--peq" style="margin-top: 1.25rem">
+        <a href="/">← Voltar ao formulário público</a>
+      </p>
+    </section>
+  </main>
+
+  <footer class="rodape">
+    <p class="rodape__admin"><a href="/admin">Área administrativa</a></p>
+  </footer>
+
+  <script>
+    (function () {
+      const box = document.getElementById('membro-qr-msg');
+      const p = new URLSearchParams(window.location.search).get('protocolo');
+      if (!box) return;
+      if (!p || !String(p).trim()) {
+        box.textContent =
+          'Ligação inválida. Utilize o QR Code da carteira ou um endereço com o protocolo (ex.: ?protocolo=ECL-123456).';
+        return;
+      }
+      fetch('/api/carteira-verificacao?protocolo=' + encodeURIComponent(String(p).trim()))
+        .then(function (r) {
+          return r.json().then(function (j) {
+            return { httpOk: r.ok, j: j };
+          });
+        })
+        .then(function (ref) {
+          const j = ref.j;
+          if (!j.ok) {
+            box.textContent = j.mensagem || 'Não foi possível validar este protocolo.';
+            return;
+          }
+          const nome = j.nome_completo || '';
+          const msg = String(j.mensagem || '');
+          box.textContent = '';
+          const strong = document.createElement('strong');
+          strong.textContent = nome;
+          box.appendChild(strong);
+          let tail = msg.startsWith(nome) ? msg.slice(nome.length) : ' ' + msg;
+          if (tail.length && !/^\s/.test(tail)) tail = ' ' + tail;
+          box.appendChild(document.createTextNode(tail));
+        })
+        .catch(function () {
+          box.textContent = 'Erro de ligação. Tente novamente mais tarde.';
+        });
+    })();
+  </script>
+</body>
+</html>

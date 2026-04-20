@@ -437,6 +437,58 @@ app.get('/admin', (_req, res) => {
   res.sendFile(path.join(__dirname, 'admin.html'));
 });
 
+/** Texto exibido ao ler o QR da carteira (solicitação aprovada). */
+const MENSAGEM_MEMBRO_ATIVO =
+  'é membro ativo da Igreja Evangêlica Assembleia de Deus Templo Central em Quixeramobim.';
+
+app.get('/api/carteira-verificacao', async (req, res) => {
+  if (!supabaseAdmin) {
+    return res.status(500).json({ ok: false, mensagem: 'Serviço indisponível.' });
+  }
+  const protocolo = String(req.query.protocolo || '').trim();
+  if (!protocolo) {
+    return res.status(400).json({ ok: false, mensagem: 'Protocolo em falta.' });
+  }
+  const { data: sol, error } = await supabaseAdmin
+    .from('solicitacoes')
+    .select('status_solicitacao, membros(nome_completo)')
+    .eq('protocolo', protocolo)
+    .maybeSingle();
+  if (error) {
+    console.error(error);
+    return res.status(500).json({ ok: false, mensagem: 'Erro ao consultar o protocolo.' });
+  }
+  if (!sol) {
+    return res.status(404).json({
+      ok: false,
+      mensagem: 'Protocolo não encontrado.',
+    });
+  }
+  const m = sol.membros;
+  let nome = '';
+  if (m && typeof m === 'object' && !Array.isArray(m)) {
+    nome = String(m.nome_completo || '').trim();
+  } else if (Array.isArray(m) && m.length && m[0]) {
+    nome = String(m[0].nome_completo || '').trim();
+  }
+  if (!nome) {
+    return res.status(500).json({ ok: false, mensagem: 'Dados do membro indisponíveis.' });
+  }
+  if (sol.status_solicitacao !== 'aprovada') {
+    return res.json({
+      ok: false,
+      mensagem:
+        'Este protocolo existe, mas a solicitação ainda não foi aprovada. A mensagem de membro ativo só é exibida após aprovação pela secretaria.',
+    });
+  }
+  const mensagem = `${nome} ${MENSAGEM_MEMBRO_ATIVO}`;
+  return res.json({ ok: true, nome_completo: nome, mensagem });
+});
+
+app.get('/membro-qr', (_req, res) => {
+  res.sendFile(path.join(__dirname, 'membro-qr.html'));
+});
+
 app.post('/api/solicitacao', upload.single('foto'), async (req, res) => {
   if (!supabaseAdmin) {
     return res.status(500).json({ mensagem: 'Servidor sem credencial Supabase (service role).' });

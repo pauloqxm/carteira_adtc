@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 _ENGINE_DIR = Path(__file__).resolve().parent
 _FONT_DIR = _ENGINE_DIR / "fonts"
@@ -72,8 +73,8 @@ def _build_layout_frente() -> dict[str, tuple[int, int, int, int]]:
     out["civil"] = _box_dx(out["civil"], -3 * _SPACE)
     # cargo: avançar 2 espaços (à direita)
     out["cargo"] = _box_dx(out["cargo"], 2 * _SPACE)
-    # data de batismo: voltar 2 espaços (à esquerda)
-    out["batismo"] = _box_dx(out["batismo"], -2 * _SPACE)
+    # data de batismo: voltar 1 espaço (net: −2 + 1 avanço em relação à base)
+    out["batismo"] = _box_dx(out["batismo"], -1 * _SPACE)
     # Expedição: voltar 2 espaços (à esquerda)
     out["expedicao"] = _box_dx(out["expedicao"], -2 * _SPACE)
     # Cargo e Expedição: subir ½ “espaço” (em Y)
@@ -91,8 +92,8 @@ def _build_layout_frente() -> dict[str, tuple[int, int, int, int]]:
 def _build_layout_costa() -> dict[str, tuple[int, int, int, int]]:
     u = _COSTA_SUBIR
     out = {k: (b[0], b[1] - u, b[2], b[3] - u) for k, b in _BASE_COSTA.items()}
-    # CPF: avançar 3 espaços (à direita)
-    out["cpf"] = _box_dx(out["cpf"], 3 * _SPACE)
+    # CPF: avançar 2 espaços (à direita; net −1 em relação ao ajuste anterior)
+    out["cpf"] = _box_dx(out["cpf"], 2 * _SPACE)
     # Cod. membro: voltar 4 espaços (à esquerda)
     out["cod"] = _box_dx(out["cod"], -4 * _SPACE)
     # Encurtar nacionalidade se o cod. tiver vindo para a esquerda e invadir a caixa do meio
@@ -276,13 +277,15 @@ def render_frente(
         foto = Image.open(io.BytesIO(foto_bytes))
         _paste_foto_cover(base, foto, L["foto_box"])
 
-    fnome = _font(int(17 * s), bold=True)
+    nome_raw = str(dados.get("nome_completo") or "").strip() or "—"
+    # Pedido: se o nome tiver 11 caracteres, usar corpo 12 pt (senão 17 pt)
+    fnome = _font(int((12 if len(nome_raw) == 11 else 17) * s), bold=True)
     fmed = _font(int(13 * s), bold=True)
     fmed_label = _font(int(13 * s), bold=False)  # “Expedição:” sem negrito; só a data em negrito
-    fsmall = _font(int(11 * s), bold=True)
+    fsmall = _font(int(12 * s), bold=True)
     tl_inset = max(2, int(4 * s))
 
-    nome = str(dados.get("nome_completo") or "").strip() or "—"
+    nome = nome_raw
     if len(nome) > _LIM_NOME_VISUAL:
         nome = nome[: max(1, _LIM_NOME_VISUAL - 1)] + "…"
     _draw_text_in_box_tl(draw, L["nome"], nome, fnome, inset=tl_inset)
@@ -361,7 +364,11 @@ def gerar_carteira(payload: dict[str, Any]) -> tuple[bytes, bytes, bytes]:
 
     protocolo = str(payload.get("protocolo") or "")
     base_url = str(payload.get("public_base_url") or "").rstrip("/")
-    qr_payload = f"{base_url}/?protocolo={protocolo}" if base_url and protocolo else protocolo or "—"
+    qr_payload = (
+        f"{base_url}/membro-qr?protocolo={quote(protocolo, safe='')}"
+        if base_url and protocolo
+        else protocolo or "—"
+    )
 
     front = render_frente(mf, foto_bytes, membro)
     back = render_costa(mc, membro, qr_payload)

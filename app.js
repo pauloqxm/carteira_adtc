@@ -120,6 +120,12 @@ async function onEnviarSolicitacao() {
 }
 
 function init() {
+  const protQr = new URLSearchParams(window.location.search).get('protocolo');
+  if (protQr && protQr.trim()) {
+    window.location.replace('/membro-qr?protocolo=' + encodeURIComponent(protQr.trim()));
+    return;
+  }
+
   const cpfInput = el('cpf');
   if (cpfInput) {
     cpfInput.addEventListener('input', () => {
