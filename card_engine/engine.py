@@ -248,18 +248,38 @@ def _paste_foto_cover(base: Image.Image, foto: Image.Image, box: tuple[int, int,
     w, h = x2 - x1, y2 - y1
     if w < 2 or h < 2:
         return
+    # Borda branca (proporcional à caixa; já em pixels do canvas renderizado)
+    borda = max(2, min(w, h) // 30)
+    while borda > 0 and (w - 2 * borda) * (h - 2 * borda) < 64:
+        borda -= 1
+    ix1, iy1 = x1 + borda, y1 + borda
+    ix2, iy2 = x2 - borda, y2 - borda
+    iw, ih = ix2 - ix1, iy2 - iy1
+    if iw < 2 or ih < 2:
+        ix1, iy1, ix2, iy2 = x1, y1, x2, y2
+        iw, ih = w, h
+        borda = 0
+
+    draw = ImageDraw.Draw(base)
+    branco = (255, 255, 255, 255)
+    if borda > 0:
+        draw.rectangle((x1, y1, x2, y1 + borda), fill=branco)
+        draw.rectangle((x1, y2 - borda, x2, y2), fill=branco)
+        draw.rectangle((x1, y1 + borda, x1 + borda, y2 - borda), fill=branco)
+        draw.rectangle((x2 - borda, y1 + borda, x2, y2 - borda), fill=branco)
+
     img = foto.convert("RGBA")
-    scale = max(w / img.width, h / img.height)
+    scale = max(iw / img.width, ih / img.height)
     nw = int(img.width * scale)
     nh = int(img.height * scale)
     img = img.resize((nw, nh), Image.Resampling.LANCZOS)
-    left = (nw - w) // 2
-    top = (nh - h) // 2
-    crop = img.crop((left, top, left + w, top + h))
+    left = (nw - iw) // 2
+    top = (nh - ih) // 2
+    crop = img.crop((left, top, left + iw, top + ih))
     if crop.mode == "RGBA":
-        base.paste(crop, (x1, y1), crop)
+        base.paste(crop, (ix1, iy1), crop)
     else:
-        base.paste(crop, (x1, y1))
+        base.paste(crop, (ix1, iy1))
 
 
 def render_frente(
