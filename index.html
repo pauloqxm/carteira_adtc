@@ -48,6 +48,203 @@
       <button type="button" id="btn-buscar" class="btn btn--primario">Buscar cadastro</button>
     </section>
 
+    <section class="card" data-etapa="cadastro-novo" hidden>
+      <h2 class="card__titulo">Novo cadastro</h2>
+      <p class="card__texto">
+        Seu CPF não foi localizado na base. Preencha os dados abaixo (os campos marcados são necessários para emitir a
+        carteira) e envie a foto.
+      </p>
+      <p id="msg-cad" class="msg" hidden></p>
+      <form id="form-cadastro-novo" class="form-cadastro-novo">
+        <fieldset class="form-cadastro-novo__grupo">
+          <legend class="form-cadastro-novo__legenda">Dados da carteira</legend>
+          <label class="campo">
+            <span class="campo__label">Código de membro <abbr title="obrigatório">*</abbr></span>
+            <input
+              id="cad-cod-membro"
+              class="campo__input"
+              type="number"
+              name="cod_membro"
+              inputmode="numeric"
+              min="1"
+              step="1"
+              required
+              placeholder="Número informado pela secretaria"
+            />
+          </label>
+          <label class="campo">
+            <span class="campo__label">Nome completo <abbr title="obrigatório">*</abbr></span>
+            <input id="cad-nome" class="campo__input" type="text" name="nome_completo" required autocomplete="name" />
+          </label>
+          <label class="campo">
+            <span class="campo__label">CPF <abbr title="obrigatório">*</abbr></span>
+            <input id="cad-cpf" class="campo__input" type="text" name="cpf" inputmode="numeric" required readonly />
+          </label>
+          <label class="campo">
+            <span class="campo__label">Data de nascimento <abbr title="obrigatório">*</abbr></span>
+            <input id="cad-data-nasc" class="campo__input" type="date" name="data_nasc" required />
+          </label>
+          <label class="campo">
+            <span class="campo__label">Data de batismo <abbr title="obrigatório">*</abbr></span>
+            <input id="cad-data-batismo" class="campo__input" type="date" name="data_batismo" required />
+          </label>
+          <label class="campo">
+            <span class="campo__label">Estado civil <abbr title="obrigatório">*</abbr></span>
+            <select id="cad-estado-civil" class="campo__input" name="estado_civil" required>
+              <option value="" disabled selected>Selecione…</option>
+              <option value="Casado(a)">Casado(a)</option>
+              <option value="Solteiro(a)">Solteiro(a)</option>
+              <option value="Divorciado(a)">Divorciado(a)</option>
+              <option value="Viúvo(a)">Viúvo(a)</option>
+            </select>
+          </label>
+          <label class="campo">
+            <span class="campo__label">Nacionalidade <abbr title="obrigatório">*</abbr></span>
+            <select id="cad-nacionalidade" class="campo__input" name="nacionalidade" required>
+              <option value="" disabled selected>Selecione…</option>
+              <option value="Brasileiro(a)">Brasileiro(a)</option>
+              <option value="Estrangeiro(a)">Estrangeiro(a)</option>
+            </select>
+          </label>
+          <label class="campo">
+            <span class="campo__label">Cargo ministerial / função <abbr title="obrigatório">*</abbr></span>
+            <select id="cad-cargo" class="campo__input" name="cargo" required>
+              <option value="" disabled selected>Selecione…</option>
+              <option value="Membro">Membro</option>
+              <option value="Auxiliar">Auxiliar</option>
+              <option value="Diácono">Diácono</option>
+              <option value="Presbítero">Presbítero</option>
+            </select>
+          </label>
+          <label class="campo">
+            <span class="campo__label">Sexo <abbr title="obrigatório">*</abbr></span>
+            <select id="cad-sexo" class="campo__input" name="sexo" required>
+              <option value="" disabled selected>Selecione…</option>
+              <option value="Masculino">Masculino</option>
+              <option value="Feminino">Feminino</option>
+            </select>
+          </label>
+        </fieldset>
+
+        <fieldset class="form-cadastro-novo__grupo">
+          <legend class="form-cadastro-novo__legenda">Outros dados (opcional)</legend>
+          <label class="campo">
+            <span class="campo__label">Congregação</span>
+            <input
+              id="cad-congregacao"
+              class="campo__input"
+              type="text"
+              name="congregacao"
+              list="lista-congregacoes"
+              placeholder="Ex.: SEDE"
+            />
+            <datalist id="lista-congregacoes">
+              <option value="SEDE"></option>
+              <option value="CONJUNTO ESPERANÇA"></option>
+              <option value="RODOVIÁRIA"></option>
+              <option value="PEDREIRAS"></option>
+              <option value="DEPOSITO"></option>
+              <option value="ALGODÕES"></option>
+              <option value="CUPIM"></option>
+              <option value="POMPEIA"></option>
+              <option value="SABONETE"></option>
+              <option value="BOA ESPERANÇA"></option>
+              <option value="MEARIM"></option>
+              <option value="FOGAREIRO"></option>
+              <option value="QUININ"></option>
+              <option value="PONTAL ALEGRE"></option>
+              <option value="CANAFÍSTULA"></option>
+              <option value="FAZENDA NORMAL"></option>
+              <option value="CAPITÃO-MOR"></option>
+              <option value="TANQUINHOS"></option>
+              <option value="SÃO JOÃO VELHO"></option>
+              <option value="URUQUÊ"></option>
+              <option value="CIPO"></option>
+            </datalist>
+          </label>
+          <label class="campo">
+            <span class="campo__label">WhatsApp / telefone</span>
+            <input id="cad-whatsapp" class="campo__input" type="tel" name="whatsapp_telefone" autocomplete="tel" />
+          </label>
+          <label class="campo">
+            <span class="campo__label">Bairro / distrito</span>
+            <input id="cad-bairro" class="campo__input" type="text" name="bairro_distrito" />
+          </label>
+          <label class="campo">
+            <span class="campo__label">Endereço</span>
+            <input id="cad-endereco" class="campo__input" type="text" name="endereco" autocomplete="street-address" />
+          </label>
+          <label class="campo">
+            <span class="campo__label">Nome do pai</span>
+            <input id="cad-nome-pai" class="campo__input" type="text" name="nome_pai" />
+          </label>
+          <label class="campo">
+            <span class="campo__label">Nome da mãe</span>
+            <input id="cad-nome-mae" class="campo__input" type="text" name="nome_mae" />
+          </label>
+          <label class="campo">
+            <span class="campo__label">Naturalidade</span>
+            <input id="cad-naturalidade" class="campo__input" type="text" name="naturalidade" />
+          </label>
+          <label class="campo">
+            <span class="campo__label">Data consagração — auxiliar</span>
+            <input id="cad-data-consag-aux" class="campo__input" type="date" name="data_consag_auxiliar" />
+          </label>
+          <label class="campo">
+            <span class="campo__label">Data consagração — diácono</span>
+            <input id="cad-data-consag-diac" class="campo__input" type="date" name="data_consag_diacono" />
+          </label>
+          <label class="campo">
+            <span class="campo__label">Data consagração — presbítero</span>
+            <input id="cad-data-consag-presb" class="campo__input" type="date" name="data_consag_presbitero" />
+          </label>
+          <label class="campo">
+            <span class="campo__label">Situação do membro</span>
+            <input id="cad-situacao" class="campo__input" type="text" name="situacao_membro" />
+          </label>
+        </fieldset>
+
+        <div class="foto-bloco">
+          <p class="campo__label">Foto para a carteira (formato 3×4) <abbr title="obrigatório">*</abbr></p>
+          <p class="foto-guia-texto">
+            A foto será ajustada para o formato <strong>3×4</strong> (retrato), padrão de carteirinha. Enquadre
+            <strong>rosto e ombros</strong> ao centro, olhando para a câmera, como no exemplo abaixo.
+          </p>
+          <div class="foto-exemplo" aria-hidden="true">
+            <p class="foto-exemplo-legenda">Exemplo de enquadramento</p>
+            <div class="foto-exemplo-moldura">
+              <div class="foto-exemplo-conteudo">
+                <div class="foto-exemplo-rosto"></div>
+                <div class="foto-exemplo-ombros"></div>
+              </div>
+              <span class="foto-exemplo-3x4">3 × 4</span>
+            </div>
+          </div>
+          <input type="file" id="cad-input-foto-camera" hidden accept="image/jpeg,image/png,image/webp" capture="user" />
+          <input type="file" id="cad-input-foto-galeria" hidden accept="image/jpeg,image/png,image/webp" />
+          <div class="foto-acoes foto-acoes--dupla">
+            <button type="button" id="cad-btn-abrir-camera" class="btn btn--secundario">Abrir câmera</button>
+            <button type="button" id="cad-btn-escolher-foto" class="btn btn--secundario">Escolher foto</button>
+            <button type="button" id="cad-btn-refazer-foto" class="btn btn--fantasma" hidden>Refazer foto</button>
+          </div>
+          <div id="cad-foto-preview-wrap" class="foto-preview-wrap" hidden>
+            <p class="foto-preview-legenda">Pré-visualização (3×4)</p>
+            <div class="foto-moldura-3x4">
+              <img id="cad-preview-foto" class="preview preview--3x4" alt="Pré-visualização da foto" />
+              <div class="foto-overlay-enquadramento">
+                <div class="foto-overlay-elipse"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="botoes-linha">
+          <button type="button" id="cad-btn-voltar" class="btn btn--fantasma">Voltar</button>
+          <button type="submit" id="cad-btn-enviar" class="btn btn--primario">Enviar solicitação</button>
+        </div>
+      </form>
+    </section>
+
     <section class="card" data-etapa="dados" hidden>
       <h2 class="card__titulo">Seus dados</h2>
       <p class="card__texto">Confira as informações e tire uma foto para concluir.</p>

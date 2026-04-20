@@ -1,116 +1,159 @@
 import { TAMANHO_MAX_FOTO_BYTES, TIPOS_FOTO_ACEITOS, validarArquivoFoto } from './validacao.js';
 
-const inputCameraId = 'input-foto-camera';
-const inputGaleriaId = 'input-foto-galeria';
-const previewId = 'preview-foto';
-const previewWrapId = 'foto-preview-wrap';
-const btnCameraId = 'btn-abrir-camera';
-const btnGaleriaId = 'btn-escolher-foto';
-const btnRefazerId = 'btn-refazer-foto';
-
 /** Largura × altura finais 3×4 (retrato), proporcionais ao padrão de carteirinha. */
 const SAIDA_3X4_LARGURA = 768;
 const SAIDA_3X4_ALTURA = 1024;
 
-let arquivoAtual = null;
+const IDS_MEMBRO_EXISTENTE = {
+  inputCamera: 'input-foto-camera',
+  inputGaleria: 'input-foto-galeria',
+  preview: 'preview-foto',
+  previewWrap: 'foto-preview-wrap',
+  btnCamera: 'btn-abrir-camera',
+  btnGaleria: 'btn-escolher-foto',
+  btnRefazer: 'btn-refazer-foto',
+};
 
-function limparValorInputs() {
-  const ic = document.getElementById(inputCameraId);
-  const ig = document.getElementById(inputGaleriaId);
-  if (ic) ic.value = '';
-  if (ig) ig.value = '';
-}
+const IDS_CADASTRO_NOVO = {
+  inputCamera: 'cad-input-foto-camera',
+  inputGaleria: 'cad-input-foto-galeria',
+  preview: 'cad-preview-foto',
+  previewWrap: 'cad-foto-preview-wrap',
+  btnCamera: 'cad-btn-abrir-camera',
+  btnGaleria: 'cad-btn-escolher-foto',
+  btnRefazer: 'cad-btn-refazer-foto',
+};
 
-export function initCameraUI({ onFotoPronta, onFotoRemovida }) {
-  const inputCamera = document.getElementById(inputCameraId);
-  const inputGaleria = document.getElementById(inputGaleriaId);
-  const preview = document.getElementById(previewId);
-  const wrap = document.getElementById(previewWrapId);
-  const btnCamera = document.getElementById(btnCameraId);
-  const btnGaleria = document.getElementById(btnGaleriaId);
-  const btnRefazer = document.getElementById(btnRefazerId);
+/**
+ * @param {typeof IDS_MEMBRO_EXISTENTE} ids
+ */
+function criarFotoSlot(ids) {
+  let arquivoAtual = null;
 
-  if (!inputCamera || !inputGaleria || !preview || !btnCamera || !btnGaleria || !btnRefazer) return;
-
-  const accept = TIPOS_FOTO_ACEITOS.join(',');
-  inputCamera.setAttribute('accept', accept);
-  inputGaleria.setAttribute('accept', accept);
-
-  async function aoEscolherFicheiro(inputEl) {
-    const file = inputEl.files?.[0];
-    if (!file) return;
-    let f = file;
-    const v = validarArquivoFoto(f);
-    if (!v.valido) {
-      alert(v.motivo);
-      limparValorInputs();
-      return;
-    }
-    try {
-      f = await recortarParaFormato3x4(f);
-    } catch (e) {
-      console.error(e);
-      alert(e.message || 'Não foi possível ajustar a foto ao formato 3×4.');
-      limparValorInputs();
-      return;
-    }
-    if (f.size > TAMANHO_MAX_FOTO_BYTES) {
-      f = await comprimirImagemAteLimite(f, TAMANHO_MAX_FOTO_BYTES);
-    }
-    arquivoAtual = f;
-    mostrarPreview(preview, wrap, f);
-    btnRefazer.hidden = false;
-    limparValorInputs();
-    onFotoPronta?.(f);
+  function limparValorInputs() {
+    const ic = document.getElementById(ids.inputCamera);
+    const ig = document.getElementById(ids.inputGaleria);
+    if (ic) ic.value = '';
+    if (ig) ig.value = '';
   }
 
-  inputCamera.addEventListener('change', () => aoEscolherFicheiro(inputCamera));
-  inputGaleria.addEventListener('change', () => aoEscolherFicheiro(inputGaleria));
+  function mostrarPreview(imgEl, wrapEl, file) {
+    const url = URL.createObjectURL(file);
+    if (imgEl.dataset.revokeUrl) URL.revokeObjectURL(imgEl.dataset.revokeUrl);
+    imgEl.dataset.revokeUrl = url;
+    imgEl.src = url;
+    imgEl.hidden = false;
+    if (wrapEl) wrapEl.hidden = false;
+  }
 
-  btnCamera.addEventListener('click', () => inputCamera.click());
-  btnGaleria.addEventListener('click', () => inputGaleria.click());
+  return {
+    init({ onFotoPronta, onFotoRemovida }) {
+      const inputCamera = document.getElementById(ids.inputCamera);
+      const inputGaleria = document.getElementById(ids.inputGaleria);
+      const preview = document.getElementById(ids.preview);
+      const wrap = document.getElementById(ids.previewWrap);
+      const btnCamera = document.getElementById(ids.btnCamera);
+      const btnGaleria = document.getElementById(ids.btnGaleria);
+      const btnRefazer = document.getElementById(ids.btnRefazer);
 
-  btnRefazer.addEventListener('click', () => {
-    limparValorInputs();
-    arquivoAtual = null;
-    preview.removeAttribute('src');
-    preview.hidden = true;
-    if (wrap) wrap.hidden = true;
-    btnRefazer.hidden = true;
-    onFotoRemovida?.();
-  });
+      if (!inputCamera || !inputGaleria || !preview || !btnCamera || !btnGaleria || !btnRefazer) return;
+
+      const accept = TIPOS_FOTO_ACEITOS.join(',');
+      inputCamera.setAttribute('accept', accept);
+      inputGaleria.setAttribute('accept', accept);
+
+      const aoEscolherFicheiro = async (inputEl) => {
+        const file = inputEl.files?.[0];
+        if (!file) return;
+        let f = file;
+        const v = validarArquivoFoto(f);
+        if (!v.valido) {
+          alert(v.motivo);
+          limparValorInputs();
+          return;
+        }
+        try {
+          f = await recortarParaFormato3x4(f);
+        } catch (e) {
+          console.error(e);
+          alert(e.message || 'Não foi possível ajustar a foto ao formato 3×4.');
+          limparValorInputs();
+          return;
+        }
+        if (f.size > TAMANHO_MAX_FOTO_BYTES) {
+          f = await comprimirImagemAteLimite(f, TAMANHO_MAX_FOTO_BYTES);
+        }
+        arquivoAtual = f;
+        mostrarPreview(preview, wrap, f);
+        btnRefazer.hidden = false;
+        limparValorInputs();
+        onFotoPronta?.(f);
+      };
+
+      inputCamera.addEventListener('change', () => aoEscolherFicheiro(inputCamera));
+      inputGaleria.addEventListener('change', () => aoEscolherFicheiro(inputGaleria));
+
+      btnCamera.addEventListener('click', () => inputCamera.click());
+      btnGaleria.addEventListener('click', () => inputGaleria.click());
+
+      btnRefazer.addEventListener('click', () => {
+        limparValorInputs();
+        arquivoAtual = null;
+        preview.removeAttribute('src');
+        preview.hidden = true;
+        if (wrap) wrap.hidden = true;
+        btnRefazer.hidden = true;
+        onFotoRemovida?.();
+      });
+    },
+
+    getArquivo() {
+      return arquivoAtual;
+    },
+
+    limpar() {
+      limparValorInputs();
+      const preview = document.getElementById(ids.preview);
+      const wrap = document.getElementById(ids.previewWrap);
+      const btnRefazer = document.getElementById(ids.btnRefazer);
+      arquivoAtual = null;
+      if (preview) {
+        preview.removeAttribute('src');
+        preview.hidden = true;
+      }
+      if (wrap) wrap.hidden = true;
+      if (btnRefazer) btnRefazer.hidden = true;
+    },
+  };
+}
+
+const slotMembro = criarFotoSlot(IDS_MEMBRO_EXISTENTE);
+const slotNovo = criarFotoSlot(IDS_CADASTRO_NOVO);
+
+export function initCameraUI(opts) {
+  slotMembro.init(opts);
+}
+
+export function initCameraUINovo(opts) {
+  slotNovo.init(opts);
 }
 
 export function getArquivoFotoAtual() {
-  return arquivoAtual;
+  return slotMembro.getArquivo();
+}
+
+export function getArquivoFotoNovo() {
+  return slotNovo.getArquivo();
 }
 
 export function limparFoto() {
-  limparValorInputs();
-  const preview = document.getElementById(previewId);
-  const wrap = document.getElementById(previewWrapId);
-  const btnRefazer = document.getElementById(btnRefazerId);
-  arquivoAtual = null;
-  if (preview) {
-    preview.removeAttribute('src');
-    preview.hidden = true;
-  }
-  if (wrap) wrap.hidden = true;
-  if (btnRefazer) btnRefazer.hidden = true;
+  slotMembro.limpar();
 }
 
-function mostrarPreview(imgEl, wrapEl, file) {
-  const url = URL.createObjectURL(file);
-  if (imgEl.dataset.revokeUrl) URL.revokeObjectURL(imgEl.dataset.revokeUrl);
-  imgEl.dataset.revokeUrl = url;
-  imgEl.src = url;
-  imgEl.hidden = false;
-  if (wrapEl) wrapEl.hidden = false;
+export function limparFotoNovo() {
+  slotNovo.limpar();
 }
 
-/**
- * Recorte central na proporção 3:4 (largura:altura) e redimensiona para SAIDA_*.
- */
 async function recortarParaFormato3x4(file) {
   const bitmap = await createImageBitmap(file);
   const iw = bitmap.width;
@@ -155,9 +198,6 @@ async function recortarParaFormato3x4(file) {
   return new File([blob], 'foto-3x4.jpg', { type: 'image/jpeg' });
 }
 
-/**
- * Redimensiona e comprime para JPEG até ficar abaixo do limite (mantém proporção atual = já 3×4).
- */
 async function comprimirImagemAteLimite(file, maxBytes) {
   const bitmap = await createImageBitmap(file);
   let { width, height } = bitmap;
@@ -171,11 +211,7 @@ async function comprimirImagemAteLimite(file, maxBytes) {
     canvas.height = Math.round(height * escala);
     ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
     return new Promise((resolve) => {
-      canvas.toBlob(
-        (blob) => resolve(blob),
-        'image/jpeg',
-        qualidade,
-      );
+      canvas.toBlob((blob) => resolve(blob), 'image/jpeg', qualidade);
     });
   };
 

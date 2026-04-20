@@ -186,6 +186,20 @@ body {
   color: var(--cor-ok);
 }
 
+.form-cadastro-novo__grupo {
+  border: 1px solid var(--cor-borda);
+  border-radius: 12px;
+  padding: 0.85rem 1rem 0.5rem;
+  margin: 0 0 1rem;
+}
+
+.form-cadastro-novo__legenda {
+  padding: 0 0.35rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--cor-texto-label);
+}
+
 .btn {
   display: inline-flex;
   align-items: center;

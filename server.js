@@ -313,6 +313,26 @@ function parseOptionalDateIso(val) {
   return undefined;
 }
 
+/** Data obrigatória AAAA-MM-DD; vazio ou inválida → { erro }; válida → { data }. */
+function parseRequiredDateIso(val, nomeCampo) {
+  if (val === null || val === undefined || String(val).trim() === '') {
+    return { erro: `${nomeCampo} é obrigatória.` };
+  }
+  const s = String(val).trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    return { erro: `${nomeCampo} inválida (use AAAA-MM-DD).` };
+  }
+  return { data: s };
+}
+
+function textoObrigatorio(val, nomeCampo, minLen = 2) {
+  const s = String(val ?? '').trim();
+  if (s.length < minLen) {
+    return { erro: `${nomeCampo} deve ter pelo menos ${minLen} caracteres.` };
+  }
+  return { texto: s };
+}
+
 /** Texto opcional: vazio → null. */
 function parseOptionalText(val) {
   if (val === null || val === undefined) return null;
@@ -716,6 +736,202 @@ app.post('/api/solicitacao', upload.single('foto'), async (req, res) => {
   }
 
   return res.status(500).json({ mensagem: 'Não foi possível gerar protocolo único.' });
+});
+
+app.post('/api/solicitacao-novo-membro', upload.single('foto'), async (req, res) => {
+  if (!supabaseAdmin) {
+    return res.status(500).json({ mensagem: 'Servidor sem credencial Supabase (service role).' });
+  }
+
+  const file = req.file;
+  if (!file || !file.buffer) {
+    return res.status(400).json({ mensagem: 'Envie a foto (campo foto).' });
+  }
+  if (!TIPOS_FOTO_ACEITOS.includes(file.mimetype)) {
+    return res.status(400).json({ mensagem: 'Formato de imagem não aceito.' });
+  }
+
+  const b = req.body && typeof req.body === 'object' ? req.body : {};
+
+  const nomeRes = textoObrigatorio(b.nome_completo, 'Nome completo', 2);
+  if (nomeRes.erro) return res.status(400).json({ mensagem: nomeRes.erro });
+
+  const cpfDigits = apenasDigitosCpf(b.cpf);
+  const cpfVal = validarCpf(cpfDigits);
+  if (!cpfVal.valido) {
+    return res.status(400).json({ mensagem: cpfVal.motivo || 'CPF inválido.' });
+  }
+
+  const cod = Number(b.cod_membro);
+  if (!Number.isInteger(cod) || cod < 1) {
+    return res.status(400).json({ mensagem: 'Código de membro inválido.' });
+  }
+
+  const dn = parseRequiredDateIso(b.data_nasc, 'Data de nascimento');
+  if (dn.erro) return res.status(400).json({ mensagem: dn.erro });
+  const db = parseRequiredDateIso(b.data_batismo, 'Data de batismo');
+  if (db.erro) return res.status(400).json({ mensagem: db.erro });
+
+  const estRes = textoObrigatorio(b.estado_civil, 'Estado civil', 2);
+  if (estRes.erro) return res.status(400).json({ mensagem: estRes.erro });
+  const natRes = textoObrigatorio(b.nacionalidade, 'Nacionalidade', 2);
+  if (natRes.erro) return res.status(400).json({ mensagem: natRes.erro });
+  const cargoRes = textoObrigatorio(b.cargo, 'Cargo', 2);
+  if (cargoRes.erro) return res.status(400).json({ mensagem: cargoRes.erro });
+  const sexoRes = textoObrigatorio(b.sexo, 'Sexo', 1);
+  if (sexoRes.erro) return res.status(400).json({ mensagem: sexoRes.erro });
+
+  const dca = parseOptionalDateIso(b.data_consag_auxiliar);
+  const dcd = parseOptionalDateIso(b.data_consag_diacono);
+  const dcp = parseOptionalDateIso(b.data_consag_presbitero);
+  if (dca === undefined || dcd === undefined || dcp === undefined) {
+    return res.status(400).json({ mensagem: 'Datas de consagração inválidas (use AAAA-MM-DD ou deixe em branco).' });
+  }
+
+  const { data: existeCpf, error: errCpf } = await supabaseAdmin
+    .from('membros')
+    .select('id')
+    .eq('cpf', cpfDigits)
+    .maybeSingle();
+  if (errCpf) {
+    console.error(errCpf);
+    return res.status(500).json({ mensagem: 'Erro ao validar CPF.' });
+  }
+  if (existeCpf) {
+    return res.status(409).json({
+      mensagem: 'Este CPF já possui cadastro. Volte e use a busca por CPF.',
+    });
+  }
+
+  const { data: dupeCod, error: errCod } = await supabaseAdmin
+    .from('membros')
+    .select('id')
+    .eq('cod_membro', cod)
+    .maybeSingle();
+  if (errCod) {
+    console.error(errCod);
+    return res.status(500).json({ mensagem: 'Erro ao validar código de membro.' });
+  }
+  if (dupeCod) {
+    return res.status(409).json({ mensagem: 'Já existe membro com este código. Confira o número com a secretaria.' });
+  }
+
+  const { data: membroNovo, error: errInsM } = await supabaseAdmin
+    .from('membros')
+    .insert({
+      cod_membro: cod,
+      nome_completo: nomeRes.texto,
+      cpf: cpfDigits,
+      data_nasc: dn.data,
+      nacionalidade: natRes.texto,
+      estado_civil: estRes.texto,
+      data_batismo: db.data,
+      cargo: cargoRes.texto,
+      sexo: sexoRes.texto,
+    })
+    .select('id, cod_membro')
+    .single();
+
+  if (errInsM || !membroNovo) {
+    console.error(errInsM);
+    return res.status(500).json({ mensagem: 'Falha ao criar cadastro do membro.' });
+  }
+
+  const membroId = membroNovo.id;
+  const ts = Date.now();
+  const ext = file.mimetype === 'image/png' ? 'png' : file.mimetype === 'image/webp' ? 'webp' : 'jpg';
+  const objectPath = `${membroNovo.cod_membro}/${ts}.${ext}`;
+
+  const { error: upErr } = await supabaseAdmin.storage
+    .from('fotos-membros')
+    .upload(objectPath, file.buffer, {
+      contentType: file.mimetype,
+      upsert: true,
+    });
+
+  if (upErr) {
+    console.error(upErr);
+    await supabaseAdmin.from('membros').delete().eq('id', membroId);
+    return res.status(500).json({ mensagem: 'Falha ao enviar foto ao armazenamento.' });
+  }
+
+  const { data: pub } = supabaseAdmin.storage.from('fotos-membros').getPublicUrl(objectPath);
+  const fotoUrl = pub?.publicUrl || '';
+
+  let protocolo = gerarProtocolo();
+  let solicitacaoId = '';
+  let insSol = null;
+
+  for (let tentativa = 0; tentativa < 5; tentativa++) {
+    const { data: ins, error: insErr } = await supabaseAdmin
+      .from('solicitacoes')
+      .insert({
+        membro_id: membroId,
+        foto_url: fotoUrl,
+        protocolo,
+        status_solicitacao: 'pendente',
+      })
+      .select('id, protocolo')
+      .single();
+
+    if (!insErr && ins) {
+      insSol = ins;
+      solicitacaoId = ins.id;
+      protocolo = ins.protocolo;
+      break;
+    }
+    if (insErr?.code === '23505') {
+      protocolo = gerarProtocolo();
+      continue;
+    }
+    console.error(insErr);
+    await supabaseAdmin.storage.from('fotos-membros').remove([objectPath]);
+    await supabaseAdmin.from('membros').delete().eq('id', membroId);
+    return res.status(500).json({ mensagem: 'Falha ao registrar solicitação.' });
+  }
+
+  if (!insSol) {
+    await supabaseAdmin.storage.from('fotos-membros').remove([objectPath]);
+    await supabaseAdmin.from('membros').delete().eq('id', membroId);
+    return res.status(500).json({ mensagem: 'Não foi possível gerar protocolo único.' });
+  }
+
+  const rowNovo = {
+    membro_id: membroId,
+    protocolo: insSol.protocolo,
+    foto_url: fotoUrl,
+    cod_membro: cod,
+    nome_completo: nomeRes.texto,
+    cpf: cpfDigits,
+    data_nasc: dn.data,
+    data_batismo: db.data,
+    estado_civil: estRes.texto,
+    nacionalidade: natRes.texto,
+    cargo: cargoRes.texto,
+    sexo: sexoRes.texto,
+    whatsapp_telefone: parseOptionalText(b.whatsapp_telefone),
+    bairro_distrito: parseOptionalText(b.bairro_distrito),
+    endereco: parseOptionalText(b.endereco),
+    nome_pai: parseOptionalText(b.nome_pai),
+    nome_mae: parseOptionalText(b.nome_mae),
+    naturalidade: parseOptionalText(b.naturalidade),
+    congregacao: parseOptionalText(b.congregacao),
+    data_consag_auxiliar: dca,
+    data_consag_diacono: dcd,
+    data_consag_presbitero: dcp,
+    situacao_membro: parseOptionalText(b.situacao_membro),
+  };
+
+  const { error: errNovo } = await supabaseAdmin.from('novo_membro').insert(rowNovo);
+  if (errNovo) {
+    console.error(errNovo);
+    await supabaseAdmin.from('solicitacoes').delete().eq('id', solicitacaoId);
+    await supabaseAdmin.storage.from('fotos-membros').remove([objectPath]);
+    await supabaseAdmin.from('membros').delete().eq('id', membroId);
+    return res.status(500).json({ mensagem: 'Falha ao registrar dados do novo cadastro. Tente novamente.' });
+  }
+
+  return res.json({ ok: true, protocolo: insSol.protocolo, id: insSol.id });
 });
 
 app.use(express.static(__dirname));

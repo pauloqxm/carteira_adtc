@@ -5,7 +5,14 @@ import {
   validarArquivoFoto,
 } from './validacao.js';
 import { buscarMembroPorCpf } from './supabase.js';
-import { initCameraUI, getArquivoFotoAtual, limparFoto } from './camera.js';
+import {
+  initCameraUI,
+  initCameraUINovo,
+  getArquivoFotoAtual,
+  getArquivoFotoNovo,
+  limparFoto,
+  limparFotoNovo,
+} from './camera.js';
 
 /** @type {object | null} */
 let membroSelecionado = null;
@@ -41,6 +48,29 @@ function setMensagemCpF(texto, tipo) {
   box.hidden = !texto;
 }
 
+function setMensagemCadastro(texto, tipo) {
+  const box = el('msg-cad');
+  if (!box) return;
+  box.textContent = texto || '';
+  box.dataset.tipo = tipo || '';
+  box.hidden = !texto;
+}
+
+function abrirCadastroNovoComCpf(digitosFormatados) {
+  const form = el('form-cadastro-novo');
+  if (form) {
+    form.reset();
+  }
+  const cadCpf = el('cad-cpf');
+  if (cadCpf) cadCpf.value = digitosFormatados;
+  limparFotoNovo();
+  setMensagemCadastro(
+    `CPF ${digitosFormatados} não constava na base. Preencha os campos obrigatórios e anexe a foto; a secretaria analisará a solicitação.`,
+    'info',
+  );
+  mostrarEtapa('cadastro-novo');
+}
+
 async function onBuscarCpf() {
   const input = el('cpf');
   const digitos = apenasDigitosCpf(input.value);
@@ -58,10 +88,8 @@ async function onBuscarCpf() {
   try {
     const row = await buscarMembroPorCpf(digitos);
     if (!row) {
-      setMensagemCpF(
-        'CPF não encontrado. Verifique os dados ou procure a secretaria da igreja.',
-        'erro',
-      );
+      setMensagemCpF('', '');
+      abrirCadastroNovoComCpf(formatarCpfMascara(digitos));
       return;
     }
     if (!row.cpf) {
@@ -119,6 +147,72 @@ async function onEnviarSolicitacao() {
   }
 }
 
+function montarFormDataCadastroNovo() {
+  const fd = new FormData();
+  const cod = el('cad-cod-membro')?.value;
+  fd.append('cod_membro', cod != null ? String(cod) : '');
+  fd.append('nome_completo', el('cad-nome')?.value?.trim() || '');
+  fd.append('cpf', el('cad-cpf')?.value || '');
+  fd.append('data_nasc', el('cad-data-nasc')?.value || '');
+  fd.append('data_batismo', el('cad-data-batismo')?.value || '');
+  fd.append('estado_civil', el('cad-estado-civil')?.value || '');
+  fd.append('nacionalidade', el('cad-nacionalidade')?.value || '');
+  fd.append('cargo', el('cad-cargo')?.value || '');
+  fd.append('sexo', el('cad-sexo')?.value || '');
+
+  const opcionais = [
+    ['congregacao', 'cad-congregacao'],
+    ['whatsapp_telefone', 'cad-whatsapp'],
+    ['bairro_distrito', 'cad-bairro'],
+    ['endereco', 'cad-endereco'],
+    ['nome_pai', 'cad-nome-pai'],
+    ['nome_mae', 'cad-nome-mae'],
+    ['naturalidade', 'cad-naturalidade'],
+    ['data_consag_auxiliar', 'cad-data-consag-aux'],
+    ['data_consag_diacono', 'cad-data-consag-diac'],
+    ['data_consag_presbitero', 'cad-data-consag-presb'],
+    ['situacao_membro', 'cad-situacao'],
+  ];
+  for (const [key, id] of opcionais) {
+    const v = el(id)?.value?.trim();
+    if (v) fd.append(key, v);
+  }
+  return fd;
+}
+
+async function onSubmitCadastroNovo(ev) {
+  ev.preventDefault();
+  const file = getArquivoFotoNovo();
+  const v = validarArquivoFoto(file);
+  if (!v.valido) {
+    alert(v.motivo);
+    return;
+  }
+
+  const fd = montarFormDataCadastroNovo();
+  fd.append('foto', file, file.name || 'foto.jpg');
+
+  const btn = el('cad-btn-enviar');
+  btn.disabled = true;
+  try {
+    const res = await fetch('/api/solicitacao-novo-membro', { method: 'POST', body: fd });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(json.mensagem || json.error || `Erro ${res.status}`);
+    }
+    el('protocolo-sucesso').textContent = json.protocolo || '—';
+    setMensagemCadastro('', '');
+    limparFotoNovo();
+    limparFoto();
+    mostrarEtapa('sucesso');
+  } catch (err) {
+    console.error(err);
+    alert(err.message || 'Falha ao enviar solicitação.');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 function init() {
   const protQr = new URLSearchParams(window.location.search).get('protocolo');
   if (protQr && protQr.trim()) {
@@ -147,10 +241,23 @@ function init() {
     if (cpfInput) cpfInput.value = '';
     setMensagemCpF('', '');
     limparFoto();
+    limparFotoNovo();
+    mostrarEtapa('cpf');
+  });
+
+  el('form-cadastro-novo')?.addEventListener('submit', onSubmitCadastroNovo);
+  el('cad-btn-voltar')?.addEventListener('click', () => {
+    setMensagemCpF('', '');
+    setMensagemCadastro('', '');
+    limparFotoNovo();
     mostrarEtapa('cpf');
   });
 
   initCameraUI({
+    onFotoPronta: () => {},
+    onFotoRemovida: () => {},
+  });
+  initCameraUINovo({
     onFotoPronta: () => {},
     onFotoRemovida: () => {},
   });
