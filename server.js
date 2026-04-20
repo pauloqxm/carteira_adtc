@@ -131,6 +131,46 @@ const upload = multer({
 const app = express();
 app.use(express.json());
 
+/** Headers de segurança HTTP em todas as respostas. */
+app.use((_req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  next();
+});
+
+/** Bloqueia acesso a arquivos sensíveis servidos pelo express.static. */
+const ARQUIVOS_BLOQUEADOS =
+  /^\/?(?:dados_membros\.csv|import\.js|\.env[^/]*|index_modelo\.html|template_cadastro\.csv[^/]*|[^/]*\.tmp)$/i;
+app.use((req, res, next) => {
+  if (ARQUIVOS_BLOQUEADOS.test(req.path)) return res.status(404).end();
+  next();
+});
+
+/**
+ * Rate limiter simples em memória: máximo de MAX_REQ por janela de JANELA_MS por IP.
+ * Reinicia a contagem automaticamente ao expirar a janela.
+ */
+const JANELA_MS = 15 * 60 * 1000; // 15 minutos
+const MAX_REQ = 12;
+const _contadores = new Map();
+function rateLimitSolicitacao(req, res, next) {
+  const ip = req.ip || req.socket?.remoteAddress || 'unknown';
+  const agora = Date.now();
+  const entrada = _contadores.get(ip);
+  if (!entrada || agora - entrada.inicio > JANELA_MS) {
+    _contadores.set(ip, { inicio: agora, count: 1 });
+    return next();
+  }
+  if (entrada.count >= MAX_REQ) {
+    return res.status(429).json({
+      mensagem: `Muitas requisições. Tente novamente em ${Math.ceil((JANELA_MS - (agora - entrada.inicio)) / 60000)} minuto(s).`,
+    });
+  }
+  entrada.count += 1;
+  return next();
+}
+
 /** Injeta chaves públicas para o cliente Supabase */
 app.get('/config.js', (_req, res) => {
   res.type('application/javascript');
@@ -529,7 +569,7 @@ app.post('/api/admin/gerar-carteira', requireAdmin, async (req, res) => {
   if (!membro || typeof membro !== 'object' || Array.isArray(membro)) {
     return res.status(500).json({ mensagem: 'Dados do membro em falta.' });
   }
-  let congregacaoNome = String(sol.congregacao_nome || membro.congregacao_nome || '').trim();
+  let congregacaoNome = String(sol.congregacao_nome || '').trim();
   if (!congregacaoNome) {
     const { data: novoCad, error: eNovoCad } = await supabaseAdmin
       .from('novo_membro')
@@ -687,7 +727,7 @@ app.get('/membro-qr', (_req, res) => {
   res.sendFile(path.join(__dirname, 'membro-qr.html'));
 });
 
-app.post('/api/solicitacao', upload.single('foto'), async (req, res) => {
+app.post('/api/solicitacao', rateLimitSolicitacao, upload.single('foto'), async (req, res) => {
   if (!supabaseAdmin) {
     return res.status(500).json({ mensagem: 'Servidor sem credencial Supabase (service role).' });
   }
@@ -783,7 +823,7 @@ app.post('/api/solicitacao', upload.single('foto'), async (req, res) => {
   return res.status(500).json({ mensagem: 'Não foi possível gerar protocolo único.' });
 });
 
-app.post('/api/solicitacao-novo-membro', upload.single('foto'), async (req, res) => {
+app.post('/api/solicitacao-novo-membro', rateLimitSolicitacao, upload.single('foto'), async (req, res) => {
   if (!supabaseAdmin) {
     return res.status(500).json({ mensagem: 'Servidor sem credencial Supabase (service role).' });
   }
