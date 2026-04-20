@@ -13,28 +13,77 @@ from typing import Any
 from PIL import Image, ImageDraw, ImageFont
 
 # --- Coordenadas em pixels (canvas 595×375) — calibradas para os templates AD ---
-# Referência de “linha” ≈ 18 px (altura útil de texto pequeno).
-_LINHA = 18
-_FRENTE_DESCER = 4 * _LINHA  # baixar toda a frente (foto + textos)
-_COSTA_SUBIR = 2 * _LINHA  # subir verso
+_LINHA = 18  # “uma linha” em Y
+_SPACE = 12  # “um espaço” em X (largura aproximada de carácter)
 
-LAYOUT_FRENTE = {
-    # caixa foto 3:4 (cobre com crop)
-    "foto_box": (26, 86 + _FRENTE_DESCER, 156, 259 + _FRENTE_DESCER),
-    "nome": (168, 98 + _FRENTE_DESCER, 575, 142 + _FRENTE_DESCER),
-    "cargo": (168, 158 + _FRENTE_DESCER, 318, 188 + _FRENTE_DESCER),
-    "expedicao": (328, 158 + _FRENTE_DESCER, 565, 188 + _FRENTE_DESCER),
-    "nasc": (168, 208 + _FRENTE_DESCER, 288, 248 + _FRENTE_DESCER),
-    "batismo": (298, 208 + _FRENTE_DESCER, 418, 248 + _FRENTE_DESCER),
-    "civil": (428, 208 + _FRENTE_DESCER, 565, 248 + _FRENTE_DESCER),
+_FRENTE_DESCER = 4 * _LINHA  # ajuste global frente (foto + textos)
+_COSTA_SUBIR = 2 * _LINHA  # ajuste global verso
+
+
+def _box_dy(box: tuple[int, int, int, int], dy: int) -> tuple[int, int, int, int]:
+    x1, y1, x2, y2 = box
+    return (x1, y1 + dy, x2, y2 + dy)
+
+
+def _box_dx(box: tuple[int, int, int, int], dx: int) -> tuple[int, int, int, int]:
+    x1, y1, x2, y2 = box
+    return (x1 + dx, y1, x2 + dx, y2)
+
+
+# Base (antes dos deslocamentos globais); depois aplicam-se _FRENTE_DESCER / _COSTA_SUBIR e micro-ajustes.
+_BASE_FRENTE = {
+    "foto_box": (26, 86, 156, 259),
+    "nome": (168, 98, 575, 142),
+    "cargo": (168, 158, 318, 188),
+    "expedicao": (328, 158, 565, 188),
+    "nasc": (168, 208, 288, 248),
+    "batismo": (298, 208, 418, 248),
+    "civil": (428, 208, 565, 248),
 }
 
-LAYOUT_COSTA = {
-    "cpf": (32, 178 - _COSTA_SUBIR, 198, 218 - _COSTA_SUBIR),
-    "nacionalidade": (208, 178 - _COSTA_SUBIR, 388, 218 - _COSTA_SUBIR),
-    "cod": (398, 178 - _COSTA_SUBIR, 568, 218 - _COSTA_SUBIR),
-    "qr": (478, 248 - _COSTA_SUBIR, 575, 355 - _COSTA_SUBIR),
+_BASE_COSTA = {
+    "cpf": (32, 178, 198, 218),
+    "nacionalidade": (208, 178, 388, 218),
+    "cod": (398, 178, 568, 218),
+    "qr": (478, 248, 575, 355),
 }
+
+
+def _build_layout_frente() -> dict[str, tuple[int, int, int, int]]:
+    d = _FRENTE_DESCER
+    out = {k: _box_dy(v, d) for k, v in _BASE_FRENTE.items()}
+    # nome_completo: mais uma linha para baixo
+    out["nome"] = _box_dy(out["nome"], _LINHA)
+    # estado civil: “voltar” = à esquerda 3 espaços
+    out["civil"] = _box_dx(out["civil"], -3 * _SPACE)
+    # Expedição: voltar 2 espaços (à esquerda)
+    out["expedicao"] = _box_dx(out["expedicao"], -2 * _SPACE)
+    # Se invadir o cargo, encurta o cargo até deixar 2 px de folga
+    cg = out["cargo"]
+    ex = out["expedicao"]
+    if ex[0] < cg[2]:
+        out["cargo"] = (cg[0], cg[1], min(cg[2], ex[0] - 2), cg[3])
+    return out
+
+
+def _build_layout_costa() -> dict[str, tuple[int, int, int, int]]:
+    u = _COSTA_SUBIR
+    out = {k: (b[0], b[1] - u, b[2], b[3] - u) for k, b in _BASE_COSTA.items()}
+    # CPF: avançar 3 espaços (à direita)
+    out["cpf"] = _box_dx(out["cpf"], 3 * _SPACE)
+    # Cod. membro: voltar 4 espaços (à esquerda)
+    out["cod"] = _box_dx(out["cod"], -4 * _SPACE)
+    # Encurtar nacionalidade se o cod. tiver vindo para a esquerda e invadir a caixa do meio
+    nac = out["nacionalidade"]
+    cd = out["cod"]
+    if cd[0] < nac[2]:
+        # Encurta pela direita até não invadir o cod. (folga de 2 px)
+        out["nacionalidade"] = (nac[0], nac[1], min(nac[2], cd[0] - 2), nac[3])
+    return out
+
+
+LAYOUT_FRENTE = _build_layout_frente()
+LAYOUT_COSTA = _build_layout_costa()
 
 
 def _font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
