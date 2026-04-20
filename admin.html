@@ -105,8 +105,17 @@
         </label>
         <p id="carteira-msg" class="admin-msg" hidden></p>
         <div class="admin-toolbar admin-toolbar--carteira">
+          <button type="button" id="btn-visualizar-pdf" class="btn btn--secundario btn--mini">
+            Visualizar PDF
+          </button>
           <button type="button" id="btn-gerar-pdf" class="btn btn--primario btn--mini">Descarregar PDF</button>
         </div>
+        <iframe
+          id="carteira-preview"
+          class="carteira-preview"
+          title="Pré-visualização do PDF"
+          hidden
+        ></iframe>
       </section>
     </div>
   </main>

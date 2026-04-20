@@ -38,6 +38,20 @@
   margin-bottom: 0;
 }
 
+.carteira-preview {
+  display: block;
+  width: 100%;
+  min-height: 520px;
+  margin-top: 1rem;
+  border: 1px solid var(--cor-borda);
+  border-radius: var(--raio);
+  background: #0a1210;
+}
+
+.carteira-preview[hidden] {
+  display: none !important;
+}
+
 .admin-header-flex {
   display: flex;
   flex-wrap: wrap;

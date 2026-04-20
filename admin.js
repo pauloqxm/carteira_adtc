@@ -2,6 +2,10 @@ const STORAGE_KEY = 'carteira_admin_token';
 
 let loginMode = 'token';
 
+/** Cache do último PDF gerado `{ chave, blob, fname }` (evita gerar duas vezes ao visualizar e descarregar). */
+let carteiraPdfCache = null;
+let carteiraPreviewObjectUrl = null;
+
 const el = (id) => document.getElementById(id);
 
 function getToken() {
@@ -226,6 +230,7 @@ function switchTab(nome) {
 async function onAcao(row, ac) {
   if (ac.tipo === 'carteira') {
     switchTab('carteira');
+    invalidarCacheCarteiraPdf();
     el('carteira-protocolo').value = row.protocolo || '';
     el('carteira-solicitacao-id').value = row.id || '';
     el('carteira-msg').hidden = true;
@@ -254,38 +259,94 @@ async function onAcao(row, ac) {
   }
 }
 
-async function gerarCarteiraPdf() {
-  const msg = el('carteira-msg');
-  msg.hidden = true;
+function chaveCarteiraPdf() {
+  const sid = el('carteira-solicitacao-id').value.trim();
+  const prot = el('carteira-protocolo').value.trim();
+  return `${sid}\t${prot}`;
+}
+
+function fecharPreviewCarteira() {
+  if (carteiraPreviewObjectUrl) {
+    URL.revokeObjectURL(carteiraPreviewObjectUrl);
+    carteiraPreviewObjectUrl = null;
+  }
+  const iframe = el('carteira-preview');
+  iframe.src = 'about:blank';
+  iframe.hidden = true;
+}
+
+function invalidarCacheCarteiraPdf() {
+  carteiraPdfCache = null;
+  fecharPreviewCarteira();
+}
+
+async function obterBlobCarteiraGerada() {
   const sid = el('carteira-solicitacao-id').value.trim();
   const prot = el('carteira-protocolo').value.trim();
   if (!sid && !prot) {
-    msg.textContent = 'Indique o protocolo ou use o botão Carteira numa linha da tabela.';
-    msg.hidden = false;
-    return;
+    throw new Error('Indique o protocolo ou use o botão Carteira numa linha da tabela.');
   }
+  const chave = chaveCarteiraPdf();
+  if (carteiraPdfCache && carteiraPdfCache.chave === chave) {
+    return carteiraPdfCache;
+  }
+
   const body = sid ? { solicitacao_id: sid } : { protocolo: prot };
   const token = getToken();
-  const btn = el('btn-gerar-pdf');
-  btn.disabled = true;
+  const res = await fetch('/api/admin/gerar-carteira', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const j = await res.json().catch(() => ({}));
+    throw new Error(j.mensagem || `Erro ${res.status}`);
+  }
+  const blob = await res.blob();
+  const cd = res.headers.get('Content-Disposition');
+  let fname = 'carteira.pdf';
+  const m = cd && cd.match(/filename="([^"]+)"/);
+  if (m) fname = m[1];
+  carteiraPdfCache = { chave, blob, fname };
+  return carteiraPdfCache;
+}
+
+async function visualizarCarteiraPdf() {
+  const msg = el('carteira-msg');
+  msg.hidden = true;
+  const btnV = el('btn-visualizar-pdf');
+  const btnD = el('btn-gerar-pdf');
+  btnV.disabled = true;
+  btnD.disabled = true;
   try {
-    const res = await fetch('/api/admin/gerar-carteira', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) {
-      const j = await res.json().catch(() => ({}));
-      throw new Error(j.mensagem || `Erro ${res.status}`);
-    }
-    const blob = await res.blob();
-    const cd = res.headers.get('Content-Disposition');
-    let fname = 'carteira.pdf';
-    const m = cd && cd.match(/filename="([^"]+)"/);
-    if (m) fname = m[1];
+    const { blob, fname } = await obterBlobCarteiraGerada();
+    fecharPreviewCarteira();
+    carteiraPreviewObjectUrl = URL.createObjectURL(blob);
+    const iframe = el('carteira-preview');
+    iframe.src = carteiraPreviewObjectUrl;
+    iframe.title = `Pré-visualização: ${fname}`;
+    iframe.hidden = false;
+  } catch (e) {
+    msg.textContent = e.message || 'Falha ao gerar PDF.';
+    msg.hidden = false;
+  } finally {
+    btnV.disabled = false;
+    btnD.disabled = false;
+  }
+}
+
+async function descarregarCarteiraPdf() {
+  const msg = el('carteira-msg');
+  msg.hidden = true;
+  const btnV = el('btn-visualizar-pdf');
+  const btnD = el('btn-gerar-pdf');
+  btnV.disabled = true;
+  btnD.disabled = true;
+  try {
+    const { blob, fname } = await obterBlobCarteiraGerada();
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -299,7 +360,8 @@ async function gerarCarteiraPdf() {
     msg.textContent = e.message || 'Falha ao gerar PDF.';
     msg.hidden = false;
   } finally {
-    btn.disabled = false;
+    btnV.disabled = false;
+    btnD.disabled = false;
   }
 }
 
@@ -399,9 +461,11 @@ async function init() {
 
   el('carteira-protocolo').addEventListener('input', () => {
     el('carteira-solicitacao-id').value = '';
+    invalidarCacheCarteiraPdf();
   });
 
-  el('btn-gerar-pdf').addEventListener('click', () => gerarCarteiraPdf());
+  el('btn-visualizar-pdf').addEventListener('click', () => visualizarCarteiraPdf());
+  el('btn-gerar-pdf').addEventListener('click', () => descarregarCarteiraPdf());
 }
 
 init();

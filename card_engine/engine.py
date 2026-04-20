@@ -1,6 +1,6 @@
 """
 Motor de geração da carteira (frente/costa + PDF).
-Templates: membro_frente.png, membro_costa.png (595×375).
+Templates: membro_frente.png, membro_costa.png (595×375); o render interno pode usar _RENDER_SCALE>1.
 Ajuste as coordenadas em LAYOUT_* se o texto não coincidir com as caixas do design.
 """
 from __future__ import annotations
@@ -12,9 +12,12 @@ from typing import Any
 
 from PIL import Image, ImageDraw, ImageFont
 
-# --- Coordenadas em pixels (canvas 595×375) — calibradas para os templates AD ---
+# --- Coordenadas em pixels (canvas lógico 595×375) — calibradas para os templates AD ---
 _LINHA = 18  # “uma linha” em Y
 _SPACE = 12  # “um espaço” em X (largura aproximada de carácter)
+# Render interno em alta resolução (texto e PDF mais nítidos); DPI do PDF escala na mesma proporção.
+_RENDER_SCALE = 2
+_PDF_BASE_DPI = 150.0  # referência com canvas 1×; com _RENDER_SCALE=2 usa o dobro de DPI para manter o tamanho físico no PDF
 
 _FRENTE_DESCER = 4 * _LINHA  # ajuste global frente (foto + textos)
 _COSTA_SUBIR = 2 * _LINHA  # ajuste global verso
@@ -28,6 +31,10 @@ def _box_dy(box: tuple[int, int, int, int], dy: int) -> tuple[int, int, int, int
 def _box_dx(box: tuple[int, int, int, int], dx: int) -> tuple[int, int, int, int]:
     x1, y1, x2, y2 = box
     return (x1 + dx, y1, x2 + dx, y2)
+
+
+def _scale_box(box: tuple[int, int, int, int], s: int) -> tuple[int, int, int, int]:
+    return tuple(int(v * s) for v in box)
 
 
 # Base (antes dos deslocamentos globais); depois aplicam-se _FRENTE_DESCER / _COSTA_SUBIR e micro-ajustes.
@@ -52,8 +59,9 @@ _BASE_COSTA = {
 def _build_layout_frente() -> dict[str, tuple[int, int, int, int]]:
     d = _FRENTE_DESCER
     out = {k: _box_dy(v, d) for k, v in _BASE_FRENTE.items()}
-    # nome_completo: mais uma linha para baixo
-    out["nome"] = _box_dy(out["nome"], _LINHA)
+    # nome: +1 linha (pedido anterior) −½ linha + 1 espaço à direita
+    out["nome"] = _box_dy(out["nome"], _LINHA - (_LINHA // 2))
+    out["nome"] = _box_dx(out["nome"], _SPACE)
     # estado civil: “voltar” = à esquerda 3 espaços
     out["civil"] = _box_dx(out["civil"], -3 * _SPACE)
     # Expedição: voltar 2 espaços (à esquerda)
@@ -147,9 +155,10 @@ def _draw_text_in_box_tl(
     text: str,
     font: ImageFont.ImageFont,
     fill: tuple[int, int, int] = (255, 255, 255),
+    inset: int = 4,
 ) -> None:
     x1, y1, x2, y2 = box
-    draw.text((x1 + 4, y1 + 4), text, font=font, fill=fill, anchor="lt")
+    draw.text((x1 + inset, y1 + inset), text, font=font, fill=fill, anchor="lt")
 
 
 def _paste_foto_cover(base: Image.Image, foto: Image.Image, box: tuple[int, int, int, int]) -> None:
@@ -176,22 +185,26 @@ def render_frente(
     foto_bytes: bytes | None,
     dados: dict[str, Any],
 ) -> Image.Image:
-    base = Image.open(tpl_path).convert("RGBA")
+    s = _RENDER_SCALE
+    tpl = Image.open(tpl_path).convert("RGBA")
+    base = tpl.resize((595 * s, 375 * s), Image.Resampling.LANCZOS)
     draw = ImageDraw.Draw(base)
-    L = LAYOUT_FRENTE
+    L = {k: _scale_box(v, s) for k, v in LAYOUT_FRENTE.items()}
 
     if foto_bytes:
         foto = Image.open(io.BytesIO(foto_bytes))
         _paste_foto_cover(base, foto, L["foto_box"])
 
-    fnome = _font(17, bold=True)
-    fmed = _font(13)
-    fsmall = _font(11)
+    fnome = _font(int(17 * s), bold=True)
+    fmed = _font(int(13 * s))
+    fsmall = _font(int(11 * s))
+    tl_inset = max(2, int(4 * s))
 
     nome = str(dados.get("nome_completo") or "").strip() or "—"
-    if len(nome) > 44:
-        nome = nome[:41] + "…"
-    _draw_text_in_box_tl(draw, L["nome"], nome, fnome)
+    lim_nome = max(20, int(44 / s))
+    if len(nome) > lim_nome:
+        nome = nome[: max(3, lim_nome - 2)] + "…"
+    _draw_text_in_box_tl(draw, L["nome"], nome, fnome, inset=tl_inset)
 
     cargo = str(dados.get("cargo") or "—").strip()
     _draw_text_in_box(draw, L["cargo"], cargo, fmed)
@@ -211,10 +224,12 @@ def render_costa(
     dados: dict[str, Any],
     qr_payload: str,
 ) -> Image.Image:
-    base = Image.open(tpl_path).convert("RGBA")
+    s = _RENDER_SCALE
+    tpl = Image.open(tpl_path).convert("RGBA")
+    base = tpl.resize((595 * s, 375 * s), Image.Resampling.LANCZOS)
     draw = ImageDraw.Draw(base)
-    L = LAYOUT_COSTA
-    fmed = _font(13)
+    L = {k: _scale_box(v, s) for k, v in LAYOUT_COSTA.items()}
+    fmed = _font(int(13 * s))
 
     _draw_text_in_box(draw, L["cpf"], _fmt_cpf(dados.get("cpf")), fmed)
     _draw_text_in_box(draw, L["nacionalidade"], str(dados.get("nacionalidade") or "—"), fmed)
@@ -224,7 +239,9 @@ def render_costa(
     try:
         import qrcode
 
-        qr = qrcode.QRCode(version=None, box_size=3, border=1)
+        qr_mod = max(2, int(3 * s))
+        qr_border = max(1, s // 2)
+        qr = qrcode.QRCode(version=None, box_size=qr_mod, border=qr_border)
         qr.add_data(qr_payload[:800])
         qr.make(fit=True)
         qimg = qr.make_image(fill_color="#1a1a2e", back_color="white").convert("RGBA")
@@ -271,10 +288,11 @@ def gerar_carteira(payload: dict[str, Any]) -> tuple[bytes, bytes, bytes]:
     back.save(buf_b, format="PNG", optimize=True)
 
     buf_pdf = io.BytesIO()
+    pdf_dpi = _PDF_BASE_DPI * _RENDER_SCALE
     front.save(
         buf_pdf,
         format="PDF",
-        resolution=150.0,
+        resolution=pdf_dpi,
         save_all=True,
         append_images=[back],
     )
