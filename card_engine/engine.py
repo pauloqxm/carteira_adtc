@@ -66,6 +66,10 @@ def _build_layout_frente() -> dict[str, tuple[int, int, int, int]]:
     out["civil"] = _box_dx(out["civil"], -3 * _SPACE)
     # Expedição: voltar 2 espaços (à esquerda)
     out["expedicao"] = _box_dx(out["expedicao"], -2 * _SPACE)
+    # Cargo e Expedição: subir ½ “espaço” (em Y)
+    _half_sp = _SPACE // 2
+    out["cargo"] = _box_dy(out["cargo"], -_half_sp)
+    out["expedicao"] = _box_dy(out["expedicao"], -_half_sp)
     # Se invadir o cargo, encurta o cargo até deixar 2 px de folga
     cg = out["cargo"]
     ex = out["expedicao"]
@@ -196,8 +200,8 @@ def render_frente(
         _paste_foto_cover(base, foto, L["foto_box"])
 
     fnome = _font(int(17 * s), bold=True)
-    fmed = _font(int(13 * s))
-    fsmall = _font(int(11 * s))
+    fmed = _font(int(13 * s), bold=True)
+    fsmall = _font(int(11 * s), bold=True)
     tl_inset = max(2, int(4 * s))
 
     nome = str(dados.get("nome_completo") or "").strip() or "—"
@@ -229,7 +233,7 @@ def render_costa(
     base = tpl.resize((595 * s, 375 * s), Image.Resampling.LANCZOS)
     draw = ImageDraw.Draw(base)
     L = {k: _scale_box(v, s) for k, v in LAYOUT_COSTA.items()}
-    fmed = _font(int(13 * s))
+    fmed = _font(int(13 * s), bold=True)
 
     _draw_text_in_box(draw, L["cpf"], _fmt_cpf(dados.get("cpf")), fmed)
     _draw_text_in_box(draw, L["nacionalidade"], str(dados.get("nacionalidade") or "—"), fmed)
