@@ -1,5 +1,7 @@
 import crypto from 'crypto';
+import { spawnSync } from 'child_process';
 import fs from 'fs';
+import os from 'os';
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -40,6 +42,7 @@ const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 const ADMIN_SECRET = process.env.ADMIN_SECRET || '';
 const ADMIN_PASSWORD_SHA256 = (process.env.ADMIN_PASSWORD_SHA256 || '').trim().toLowerCase();
 const ADMIN_USERNAME = (process.env.ADMIN_USERNAME || 'admin').trim();
+const PUBLIC_SITE_URL = (process.env.PUBLIC_SITE_URL || '').replace(/\/$/, '');
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ADMIN_SESSION_MS = 12 * 60 * 60 * 1000;
@@ -273,6 +276,162 @@ app.delete('/api/admin/solicitacoes/:id', requireAdmin, async (req, res) => {
   }
   res.json({ ok: true });
 });
+
+function dataHojeBR() {
+  const d = new Date();
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const yyyy = d.getFullYear();
+  return `${dd}/${mm}/${yyyy}`;
+}
+
+function runPythonCarteira(jsonPath) {
+  const script = path.join(__dirname, 'card_engine', 'engine.py');
+  const runners = ['python3', 'python'];
+  for (const cmd of runners) {
+    const r = spawnSync(cmd, [script, jsonPath], {
+      encoding: 'utf-8',
+      maxBuffer: 80 * 1024 * 1024,
+      env: { ...process.env, PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8' },
+    });
+    if (r.error?.code === 'ENOENT') continue;
+    if (r.status !== 0) {
+      const msg = (r.stderr || r.stdout || '').trim() || `Motor saiu com código ${r.status}`;
+      const err = new Error(msg);
+      err.code = 'ENGINE_FAILED';
+      throw err;
+    }
+    const lines = r.stdout.trim().split('\n').filter(Boolean);
+    const line = lines[lines.length - 1];
+    return JSON.parse(line);
+  }
+  const err = new Error(
+    'Python 3 não encontrado. No deploy use o Dockerfile (inclui Python + Pillow + qrcode) ou instale Python no servidor.',
+  );
+  err.code = 'PYTHON_MISSING';
+  throw err;
+}
+
+app.post('/api/admin/gerar-carteira', requireAdmin, async (req, res) => {
+  if (!supabaseAdmin) {
+    return res.status(500).json({ mensagem: 'Servidor sem credencial Supabase.' });
+  }
+  const protocolo = typeof req.body?.protocolo === 'string' ? req.body.protocolo.trim() : '';
+  const solicitacaoId =
+    typeof req.body?.solicitacao_id === 'string' ? req.body.solicitacao_id.trim() : '';
+  if (!protocolo && !solicitacaoId) {
+    return res.status(400).json({ mensagem: 'Indique protocolo ou solicitacao_id.' });
+  }
+
+  let solQuery;
+  if (solicitacaoId && UUID_RE.test(solicitacaoId)) {
+    solQuery = supabaseAdmin
+      .from('solicitacoes')
+      .select('id, protocolo, foto_url, status_solicitacao, membro_id, membros(*)')
+      .eq('id', solicitacaoId)
+      .maybeSingle();
+  } else if (protocolo) {
+    solQuery = supabaseAdmin
+      .from('solicitacoes')
+      .select('id, protocolo, foto_url, status_solicitacao, membro_id, membros(*)')
+      .eq('protocolo', protocolo)
+      .maybeSingle();
+  } else {
+    return res.status(400).json({ mensagem: 'solicitacao_id inválido.' });
+  }
+
+  const { data: sol, error: e1 } = await solQuery;
+  if (e1) {
+    console.error(e1);
+    return res.status(500).json({ mensagem: 'Erro ao buscar solicitação.' });
+  }
+  if (!sol) {
+    return res.status(404).json({ mensagem: 'Solicitação não encontrada.' });
+  }
+
+  const membro = sol.membros;
+  if (!membro || typeof membro !== 'object' || Array.isArray(membro)) {
+    return res.status(500).json({ mensagem: 'Dados do membro em falta.' });
+  }
+
+  const tmp = os.tmpdir();
+  const id = crypto.randomBytes(8).toString('hex');
+  let jsonPath = '';
+  let outF = '';
+  let outB = '';
+  let outPdf = '';
+  let fotoPath = '';
+
+  try {
+    jsonPath = path.join(tmp, `carteira_${id}.json`);
+    outF = path.join(tmp, `carteira_${id}_f.png`);
+    outB = path.join(tmp, `carteira_${id}_c.png`);
+    outPdf = path.join(tmp, `carteira_${id}.pdf`);
+    if (sol.foto_url && typeof sol.foto_url === 'string') {
+      const fr = await fetch(sol.foto_url);
+      if (!fr.ok) {
+        return res.status(502).json({ mensagem: 'Não foi possível descarregar a foto desta solicitação.' });
+      }
+      const buf = Buffer.from(await fr.arrayBuffer());
+      if (buf.length > 15 * 1024 * 1024) {
+        return res.status(400).json({ mensagem: 'Ficheiro da foto demasiado grande.' });
+      }
+      fotoPath = path.join(tmp, `carteira_${id}_foto.jpg`);
+      fs.writeFileSync(fotoPath, buf);
+    }
+
+    const payload = {
+      paths: {
+        membro_frente: path.join(__dirname, 'membro_frente.png'),
+        membro_costa: path.join(__dirname, 'membro_costa.png'),
+      },
+      out_frente_png: outF,
+      out_costa_png: outB,
+      out_pdf: outPdf,
+      foto_path: fotoPath || undefined,
+      protocolo: sol.protocolo || '',
+      public_base_url: PUBLIC_SITE_URL,
+      membro: {
+        nome_completo: membro.nome_completo,
+        cargo: membro.cargo,
+        data_nasc: membro.data_nasc,
+        data_batismo: membro.data_batismo,
+        estado_civil: membro.estado_civil,
+        cpf: membro.cpf,
+        nacionalidade: membro.nacionalidade,
+        cod_membro: membro.cod_membro,
+        data_expedicao: dataHojeBR(),
+      },
+    };
+
+    fs.writeFileSync(jsonPath, JSON.stringify(payload), 'utf8');
+    runPythonCarteira(jsonPath);
+    const pdfBuf = fs.readFileSync(outPdf);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="carteira-${String(sol.protocolo || id).replace(/[^a-zA-Z0-9-_]/g, '_')}.pdf"`,
+    );
+    res.send(pdfBuf);
+  } catch (err) {
+    console.error(err);
+    if (err.code === 'PYTHON_MISSING') {
+      return res.status(503).json({ mensagem: err.message });
+    }
+    return res.status(500).json({
+      mensagem: err.message?.slice(0, 500) || 'Falha ao gerar carteira.',
+    });
+  } finally {
+    for (const p of [jsonPath, outF, outB, outPdf, fotoPath]) {
+      try {
+        if (p && fs.existsSync(p)) fs.unlinkSync(p);
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+});
+
 
 app.get('/admin', (_req, res) => {
   res.sendFile(path.join(__dirname, 'admin.html'));

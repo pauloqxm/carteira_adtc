@@ -177,7 +177,7 @@ function renderTabela(itens) {
       b.type = 'button';
       b.className = `btn btn--mini ${ac.cls}`;
       b.textContent = ac.label;
-      b.addEventListener('click', () => onAcao(row.id, ac));
+      b.addEventListener('click', () => onAcao(row, ac));
       tdAc.appendChild(b);
     }
     tr.appendChild(tdAc);
@@ -190,6 +190,7 @@ function acoesLinha() {
   return [
     { label: 'Aprovar', tipo: 'patch', status: 'aprovada', cls: 'btn--primario' },
     { label: 'Rejeitar', tipo: 'patch', status: 'rejeitada', cls: 'btn--secundario' },
+    { label: 'Carteira', tipo: 'carteira', cls: 'btn--secundario' },
     { label: 'Excluir', tipo: 'delete', cls: 'btn--excluir' },
   ];
 }
@@ -214,7 +215,23 @@ async function carregarLista() {
   }
 }
 
-async function onAcao(id, ac) {
+function switchTab(nome) {
+  document.querySelectorAll('.admin-tab').forEach((b) => {
+    b.classList.toggle('admin-tab--active', b.dataset.tab === nome);
+  });
+  el('tab-solicitacoes').hidden = nome !== 'solicitacoes';
+  el('tab-carteira').hidden = nome !== 'carteira';
+}
+
+async function onAcao(row, ac) {
+  if (ac.tipo === 'carteira') {
+    switchTab('carteira');
+    el('carteira-protocolo').value = row.protocolo || '';
+    el('carteira-solicitacao-id').value = row.id || '';
+    el('carteira-msg').hidden = true;
+    return;
+  }
+  const id = row.id;
   if (ac.tipo === 'delete') {
     if (!confirm('Excluir esta solicitação permanentemente? Esta ação não pode ser desfeita.')) return;
     try {
@@ -234,6 +251,55 @@ async function onAcao(id, ac) {
     await carregarLista();
   } catch (e) {
     alert(e.message || 'Falha ao atualizar.');
+  }
+}
+
+async function gerarCarteiraPdf() {
+  const msg = el('carteira-msg');
+  msg.hidden = true;
+  const sid = el('carteira-solicitacao-id').value.trim();
+  const prot = el('carteira-protocolo').value.trim();
+  if (!sid && !prot) {
+    msg.textContent = 'Indique o protocolo ou use o botão Carteira numa linha da tabela.';
+    msg.hidden = false;
+    return;
+  }
+  const body = sid ? { solicitacao_id: sid } : { protocolo: prot };
+  const token = getToken();
+  const btn = el('btn-gerar-pdf');
+  btn.disabled = true;
+  try {
+    const res = await fetch('/api/admin/gerar-carteira', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      throw new Error(j.mensagem || `Erro ${res.status}`);
+    }
+    const blob = await res.blob();
+    const cd = res.headers.get('Content-Disposition');
+    let fname = 'carteira.pdf';
+    const m = cd && cd.match(/filename="([^"]+)"/);
+    if (m) fname = m[1];
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fname;
+    a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    msg.textContent = e.message || 'Falha ao gerar PDF.';
+    msg.hidden = false;
+  } finally {
+    btn.disabled = false;
   }
 }
 
@@ -326,6 +392,16 @@ async function init() {
 
   el('btn-atualizar').addEventListener('click', () => carregarLista());
   el('filtro-status').addEventListener('change', () => carregarLista());
+
+  document.querySelectorAll('.admin-tab').forEach((btn) => {
+    btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+  });
+
+  el('carteira-protocolo').addEventListener('input', () => {
+    el('carteira-solicitacao-id').value = '';
+  });
+
+  el('btn-gerar-pdf').addEventListener('click', () => gerarCarteiraPdf());
 }
 
 init();

@@ -1,3 +1,43 @@
+.admin-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.admin-tab {
+  padding: 0.55rem 1rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  font-family: inherit;
+  border-radius: 10px;
+  border: 1px solid var(--cor-borda);
+  background: #0f1c17;
+  color: var(--cor-texto-mudo);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.admin-tab:hover {
+  color: var(--cor-texto);
+  border-color: #3d5a4c;
+}
+
+.admin-tab--active {
+  color: var(--cor-prim-hover);
+  border-color: var(--cor-prim);
+  background: rgba(61, 154, 111, 0.12);
+}
+
+.admin-tab-panel {
+  margin-bottom: 1rem;
+}
+
+.admin-toolbar--carteira {
+  margin-top: 0.75rem;
+  margin-bottom: 0;
+}
+
 .admin-header-flex {
   display: flex;
   flex-wrap: wrap;

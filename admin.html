@@ -50,38 +50,65 @@
       <p id="login-msg" class="admin-msg" hidden></p>
     </section>
 
-    <section id="sec-painel" class="card" hidden>
-      <div class="admin-toolbar">
-        <label>
-          Filtrar
-          <select id="filtro-status">
-            <option value="">Todos</option>
-            <option value="pendente">Pendente</option>
-            <option value="aprovada">Aprovada</option>
-            <option value="rejeitada">Rejeitada</option>
-          </select>
+    <div id="sec-painel" hidden>
+      <nav class="admin-tabs" id="admin-tabs" aria-label="Secções do painel">
+        <button type="button" class="admin-tab admin-tab--active" data-tab="solicitacoes">Solicitações</button>
+        <button type="button" class="admin-tab" data-tab="carteira">Gerar carteira</button>
+      </nav>
+
+      <section id="tab-solicitacoes" class="card admin-tab-panel">
+        <div class="admin-toolbar">
+          <label>
+            Filtrar
+            <select id="filtro-status">
+              <option value="">Todos</option>
+              <option value="pendente">Pendente</option>
+              <option value="aprovada">Aprovada</option>
+              <option value="rejeitada">Rejeitada</option>
+            </select>
+          </label>
+          <button type="button" id="btn-atualizar" class="btn btn--secundario btn--mini">Atualizar lista</button>
+          <button type="button" id="btn-sair" class="btn btn--fantasma btn--mini">Sair da sessão</button>
+        </div>
+        <p id="lista-msg" class="admin-msg" hidden></p>
+        <div class="admin-table-wrap">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>Foto</th>
+                <th>Protocolo</th>
+                <th>Membro</th>
+                <th>CPF</th>
+                <th>Data</th>
+                <th>Status</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody id="tbody-solicitacoes"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="tab-carteira" class="card admin-tab-panel" hidden>
+        <h2 class="card__titulo">Gerar carteira (PDF)</h2>
+        <p class="card__texto">
+          Usa os modelos <code>membro_frente.png</code> e <code>membro_costa.png</code> e os dados da solicitação.
+          O PDF inclui frente e verso. A data de expedição é a data de geração.
+        </p>
+        <p class="card__texto card__texto--peq">
+          Pode preencher o protocolo manualmente ou tocar em <strong>Carteira</strong> na tabela de solicitações.
+        </p>
+        <input type="hidden" id="carteira-solicitacao-id" value="" />
+        <label class="campo">
+          <span class="campo__label">Protocolo (ex.: ECL-123456)</span>
+          <input id="carteira-protocolo" class="campo__input" type="text" autocomplete="off" placeholder="ECL-…" />
         </label>
-        <button type="button" id="btn-atualizar" class="btn btn--secundario btn--mini">Atualizar lista</button>
-        <button type="button" id="btn-sair" class="btn btn--fantasma btn--mini">Sair da sessão</button>
-      </div>
-      <p id="lista-msg" class="admin-msg" hidden></p>
-      <div class="admin-table-wrap">
-        <table class="admin-table">
-          <thead>
-            <tr>
-              <th>Foto</th>
-              <th>Protocolo</th>
-              <th>Membro</th>
-              <th>CPF</th>
-              <th>Data</th>
-              <th>Status</th>
-              <th>Ações</th>
-            </tr>
-          </thead>
-          <tbody id="tbody-solicitacoes"></tbody>
-        </table>
-      </div>
-    </section>
+        <p id="carteira-msg" class="admin-msg" hidden></p>
+        <div class="admin-toolbar admin-toolbar--carteira">
+          <button type="button" id="btn-gerar-pdf" class="btn btn--primario btn--mini">Descarregar PDF</button>
+        </div>
+      </section>
+    </div>
   </main>
 
   <footer class="rodape">
