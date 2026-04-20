@@ -59,6 +59,7 @@ _BASE_COSTA = {
     "cpf": (32, 178, 198, 218),
     "nacionalidade": (208, 178, 388, 218),
     "cod": (398, 178, 568, 218),
+    "congregacao_nome": (208, 222, 568, 246),
     "qr": (478, 248, 575, 355),
 }
 
@@ -342,6 +343,7 @@ def render_costa(
     _draw_text_in_box(draw, L["nacionalidade"], str(dados.get("nacionalidade") or "—"), fmed)
     cod = dados.get("cod_membro")
     _draw_text_in_box(draw, L["cod"], str(cod) if cod is not None else "—", fmed)
+    _draw_text_in_box(draw, L["congregacao_nome"], str(dados.get("congregacao_nome") or "—"), fmed)
 
     try:
         import qrcode

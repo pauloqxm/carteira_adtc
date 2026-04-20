@@ -523,6 +523,21 @@ app.post('/api/admin/gerar-carteira', requireAdmin, async (req, res) => {
   if (!membro || typeof membro !== 'object' || Array.isArray(membro)) {
     return res.status(500).json({ mensagem: 'Dados do membro em falta.' });
   }
+  let congregacaoNome = String(membro.congregacao_nome || '').trim();
+  if (!congregacaoNome) {
+    const { data: novoCad, error: eNovoCad } = await supabaseAdmin
+      .from('novo_membro')
+      .select('congregacao')
+      .eq('membro_id', membro.id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (eNovoCad) {
+      console.error(eNovoCad);
+      return res.status(500).json({ mensagem: 'Erro ao consultar congregação do cadastro.' });
+    }
+    congregacaoNome = String(novoCad?.congregacao || '').trim();
+  }
 
   const tmp = os.tmpdir();
   const id = crypto.randomBytes(8).toString('hex');
@@ -569,6 +584,7 @@ app.post('/api/admin/gerar-carteira', requireAdmin, async (req, res) => {
         estado_civil: membro.estado_civil,
         cpf: membro.cpf,
         nacionalidade: membro.nacionalidade,
+        congregacao_nome: congregacaoNome || '—',
         cod_membro: membro.cod_membro,
         data_expedicao: dataHojeBR(),
       },
