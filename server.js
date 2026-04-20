@@ -144,13 +144,19 @@ function gerarProtocolo(prefixo = 'ECL') {
 }
 
 /** Nome sugerido para o PDF da carteira (UTF-8 + fallback ASCII para o cabeçalho HTTP). */
-function nomeFicheiroPdfCarteira(nomeCompleto) {
+function nomeFicheiroPdfCarteira(nomeCompleto, congregacaoNome) {
   const nome = String(nomeCompleto || '')
     .trim()
     .replace(/["\r\n]/g, ' ')
     .replace(/[/\\:*?|]/g, '-')
-    .slice(0, 120);
-  const base = nome || 'Membro';
+    .slice(0, 90);
+  const congregacao = String(congregacaoNome || '')
+    .trim()
+    .replace(/["\r\n]/g, ' ')
+    .replace(/[/\\:*?|]/g, '-')
+    .slice(0, 60);
+  const base =
+    congregacao && nome ? `${congregacao} - ${nome}` : congregacao || nome || 'Membro';
   const utf8 = `${base}.pdf`;
   const ascii =
     `${base
@@ -593,7 +599,10 @@ app.post('/api/admin/gerar-carteira', requireAdmin, async (req, res) => {
     fs.writeFileSync(jsonPath, JSON.stringify(payload), 'utf8');
     runPythonCarteira(jsonPath);
     const pdfBuf = fs.readFileSync(outPdf);
-    const { utf8: nomePdfUtf8, ascii: nomePdfAscii } = nomeFicheiroPdfCarteira(membro.nome_completo);
+    const { utf8: nomePdfUtf8, ascii: nomePdfAscii } = nomeFicheiroPdfCarteira(
+      membro.nome_completo,
+      congregacaoNome,
+    );
     const dispAscii = nomePdfAscii.replace(/"/g, "'");
     const dispStar = encodeURIComponent(nomePdfUtf8);
     res.setHeader('Content-Type', 'application/pdf');
