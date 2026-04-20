@@ -283,6 +283,33 @@ body {
   gap: 0.5rem;
 }
 
+.foto-acoes--dupla {
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+
+.foto-acoes--dupla #btn-abrir-camera,
+.foto-acoes--dupla #btn-escolher-foto {
+  flex: 1 1 calc(50% - 0.25rem);
+  min-width: 0;
+}
+
+.foto-acoes--dupla #btn-refazer-foto {
+  flex: 1 1 100%;
+}
+
+@media (max-width: 380px) {
+  .foto-acoes--dupla {
+    flex-direction: column;
+  }
+
+  .foto-acoes--dupla #btn-abrir-camera,
+  .foto-acoes--dupla #btn-escolher-foto {
+    flex: 1 1 auto;
+    width: 100%;
+  }
+}
+
 .foto-guia-texto {
   margin: 0 0 0.85rem;
   font-size: 0.88rem;

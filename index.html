@@ -75,9 +75,11 @@
             <span class="foto-exemplo-3x4">3 × 4</span>
           </div>
         </div>
-        <input type="file" id="input-foto" hidden />
-        <div class="foto-acoes">
-          <button type="button" id="btn-capturar" class="btn btn--secundario">Abrir câmera / escolher foto</button>
+        <input type="file" id="input-foto-camera" hidden accept="image/jpeg,image/png,image/webp" capture="user" />
+        <input type="file" id="input-foto-galeria" hidden accept="image/jpeg,image/png,image/webp" />
+        <div class="foto-acoes foto-acoes--dupla">
+          <button type="button" id="btn-abrir-camera" class="btn btn--secundario">Abrir câmera</button>
+          <button type="button" id="btn-escolher-foto" class="btn btn--secundario">Escolher foto</button>
           <button type="button" id="btn-refazer-foto" class="btn btn--fantasma" hidden>Refazer foto</button>
         </div>
         <div id="foto-preview-wrap" class="foto-preview-wrap" hidden>

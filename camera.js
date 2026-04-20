@@ -1,9 +1,11 @@
 import { TAMANHO_MAX_FOTO_BYTES, TIPOS_FOTO_ACEITOS, validarArquivoFoto } from './validacao.js';
 
-const inputId = 'input-foto';
+const inputCameraId = 'input-foto-camera';
+const inputGaleriaId = 'input-foto-galeria';
 const previewId = 'preview-foto';
 const previewWrapId = 'foto-preview-wrap';
-const btnCapturarId = 'btn-capturar';
+const btnCameraId = 'btn-abrir-camera';
+const btnGaleriaId = 'btn-escolher-foto';
 const btnRefazerId = 'btn-refazer-foto';
 
 /** Largura × altura finais 3×4 (retrato), proporcionais ao padrão de carteirinha. */
@@ -12,28 +14,36 @@ const SAIDA_3X4_ALTURA = 1024;
 
 let arquivoAtual = null;
 
+function limparValorInputs() {
+  const ic = document.getElementById(inputCameraId);
+  const ig = document.getElementById(inputGaleriaId);
+  if (ic) ic.value = '';
+  if (ig) ig.value = '';
+}
+
 export function initCameraUI({ onFotoPronta, onFotoRemovida }) {
-  const input = document.getElementById(inputId);
+  const inputCamera = document.getElementById(inputCameraId);
+  const inputGaleria = document.getElementById(inputGaleriaId);
   const preview = document.getElementById(previewId);
   const wrap = document.getElementById(previewWrapId);
-  const btnCapturar = document.getElementById(btnCapturarId);
+  const btnCamera = document.getElementById(btnCameraId);
+  const btnGaleria = document.getElementById(btnGaleriaId);
   const btnRefazer = document.getElementById(btnRefazerId);
 
-  if (!input || !preview || !btnCapturar || !btnRefazer) return;
+  if (!inputCamera || !inputGaleria || !preview || !btnCamera || !btnGaleria || !btnRefazer) return;
 
-  input.setAttribute('accept', TIPOS_FOTO_ACEITOS.join(','));
-  input.setAttribute('capture', 'user');
+  const accept = TIPOS_FOTO_ACEITOS.join(',');
+  inputCamera.setAttribute('accept', accept);
+  inputGaleria.setAttribute('accept', accept);
 
-  btnCapturar.addEventListener('click', () => input.click());
-
-  input.addEventListener('change', async () => {
-    const file = input.files?.[0];
+  async function aoEscolherFicheiro(inputEl) {
+    const file = inputEl.files?.[0];
     if (!file) return;
     let f = file;
     const v = validarArquivoFoto(f);
     if (!v.valido) {
       alert(v.motivo);
-      input.value = '';
+      limparValorInputs();
       return;
     }
     try {
@@ -41,7 +51,7 @@ export function initCameraUI({ onFotoPronta, onFotoRemovida }) {
     } catch (e) {
       console.error(e);
       alert(e.message || 'Não foi possível ajustar a foto ao formato 3×4.');
-      input.value = '';
+      limparValorInputs();
       return;
     }
     if (f.size > TAMANHO_MAX_FOTO_BYTES) {
@@ -50,11 +60,18 @@ export function initCameraUI({ onFotoPronta, onFotoRemovida }) {
     arquivoAtual = f;
     mostrarPreview(preview, wrap, f);
     btnRefazer.hidden = false;
+    limparValorInputs();
     onFotoPronta?.(f);
-  });
+  }
+
+  inputCamera.addEventListener('change', () => aoEscolherFicheiro(inputCamera));
+  inputGaleria.addEventListener('change', () => aoEscolherFicheiro(inputGaleria));
+
+  btnCamera.addEventListener('click', () => inputCamera.click());
+  btnGaleria.addEventListener('click', () => inputGaleria.click());
 
   btnRefazer.addEventListener('click', () => {
-    input.value = '';
+    limparValorInputs();
     arquivoAtual = null;
     preview.removeAttribute('src');
     preview.hidden = true;
@@ -69,11 +86,10 @@ export function getArquivoFotoAtual() {
 }
 
 export function limparFoto() {
-  const input = document.getElementById(inputId);
+  limparValorInputs();
   const preview = document.getElementById(previewId);
   const wrap = document.getElementById(previewWrapId);
   const btnRefazer = document.getElementById(btnRefazerId);
-  if (input) input.value = '';
   arquivoAtual = null;
   if (preview) {
     preview.removeAttribute('src');
