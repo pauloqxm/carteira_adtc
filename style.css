@@ -9,10 +9,10 @@
   --cor-texto: #f1f5f9;
   --cor-texto-mudo: #94a3b8;
   --cor-texto-label: #64748b;
-  --cor-prim: #c9a227;
-  --cor-prim-hover: #ddb84a;
-  --cor-prim-suave: rgba(201, 162, 39, 0.14);
-  --cor-prim-borda: rgba(201, 162, 39, 0.4);
+  --cor-prim: #008ad1;
+  --cor-prim-hover: #12a0e8;
+  --cor-prim-suave: rgba(0, 138, 209, 0.16);
+  --cor-prim-borda: rgba(0, 138, 209, 0.45);
   --cor-input-bg: #0c1428;
   --cor-painel-inset: #0a0f1c;
   --cor-btn-secundario: #1a2d4a;
@@ -213,7 +213,7 @@ body {
 
 .btn--primario {
   background: var(--cor-prim);
-  color: #1a1506;
+  color: #f8fafc;
 }
 
 .btn--primario:hover:not(:disabled) {
@@ -344,7 +344,7 @@ body {
   border: 2px solid rgba(148, 163, 184, 0.28);
   border-radius: 45% 45% 0 0;
   border-bottom: none;
-  background: rgba(201, 162, 39, 0.08);
+  background: rgba(0, 138, 209, 0.1);
 }
 
 .foto-exemplo-3x4 {
