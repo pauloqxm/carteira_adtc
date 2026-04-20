@@ -48,6 +48,27 @@ const ADMIN_SECRET = process.env.ADMIN_SECRET || '';
 const ADMIN_PASSWORD_SHA256 = (process.env.ADMIN_PASSWORD_SHA256 || '').trim().toLowerCase();
 const ADMIN_USERNAME = (process.env.ADMIN_USERNAME || 'admin').trim();
 const PUBLIC_SITE_URL = (process.env.PUBLIC_SITE_URL || '').replace(/\/$/, '');
+const ALLOW_IFRAME = /^true$/i.test((process.env.ALLOW_IFRAME || 'false').trim());
+
+function parseAllowedFrameAncestors(raw) {
+  const tokens = String(raw || '')
+    .split(/\s+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const valid = [];
+  for (const token of tokens) {
+    try {
+      const u = new URL(token);
+      if (u.protocol !== 'https:' && u.protocol !== 'http:') continue;
+      valid.push(u.origin);
+    } catch {
+      /* ignora entradas inválidas */
+    }
+  }
+  return [...new Set(valid)];
+}
+
+const ALLOWED_FRAME_ANCESTORS = parseAllowedFrameAncestors(process.env.ALLOWED_FRAME_ANCESTORS || '');
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ADMIN_SESSION_MS = 12 * 60 * 60 * 1000;
@@ -134,8 +155,17 @@ app.use(express.json());
 /** Headers de segurança HTTP em todas as respostas. */
 app.use((_req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  const frameAncestors =
+    ALLOW_IFRAME && ALLOWED_FRAME_ANCESTORS.length
+      ? ALLOWED_FRAME_ANCESTORS.join(' ')
+      : "'none'";
+  res.setHeader('Content-Security-Policy', `frame-ancestors ${frameAncestors}`);
+  if (ALLOW_IFRAME && ALLOWED_FRAME_ANCESTORS.length) {
+    res.removeHeader('X-Frame-Options');
+  } else {
+    res.setHeader('X-Frame-Options', 'DENY');
+  }
   next();
 });
 
