@@ -942,7 +942,28 @@ app.post('/api/solicitacao-novo-membro', upload.single('foto'), async (req, res)
     await supabaseAdmin.from('solicitacoes').delete().eq('id', solicitacaoId);
     await supabaseAdmin.storage.from('fotos-membros').remove([objectPath]);
     await supabaseAdmin.from('membros').delete().eq('id', membroId);
-    return res.status(500).json({ mensagem: 'Falha ao registrar dados do novo cadastro. Tente novamente.' });
+    if (errNovo.code === '42P01') {
+      return res.status(500).json({
+        mensagem:
+          'Falha ao registrar dados do novo cadastro: tabela novo_membro não encontrada. Aplique a migração no Supabase e tente novamente.',
+      });
+    }
+    if (errNovo.code === '42501') {
+      return res.status(500).json({
+        mensagem:
+          'Falha ao registrar dados do novo cadastro: sem permissão para inserir em novo_membro. Verifique políticas/RLS da tabela.',
+      });
+    }
+    if (errNovo.code === '23502') {
+      return res.status(500).json({
+        mensagem:
+          'Falha ao registrar dados do novo cadastro: campos obrigatórios ausentes na tabela novo_membro. Verifique se a estrutura está atualizada.',
+      });
+    }
+    return res.status(500).json({
+      mensagem:
+        'Falha ao registrar dados do novo cadastro. Verifique a migração/estrutura da tabela novo_membro e tente novamente.',
+    });
   }
 
   return res.json({ ok: true, protocolo: insSol.protocolo, id: insSol.id });
