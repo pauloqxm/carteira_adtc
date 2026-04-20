@@ -118,13 +118,14 @@
         <fieldset class="form-cadastro-novo__grupo">
           <legend class="form-cadastro-novo__legenda">Outros dados (opcional)</legend>
           <label class="campo">
-            <span class="campo__label">Congregação</span>
+            <span class="campo__label">Congregação <abbr title="obrigatório">*</abbr></span>
             <input
               id="cad-congregacao"
               class="campo__input"
               type="text"
               name="congregacao"
               list="lista-congregacoes"
+              required
               placeholder="Ex.: SEDE"
             />
             <datalist id="lista-congregacoes">
@@ -152,8 +153,8 @@
             </datalist>
           </label>
           <label class="campo">
-            <span class="campo__label">WhatsApp / telefone</span>
-            <input id="cad-whatsapp" class="campo__input" type="tel" name="whatsapp_telefone" autocomplete="tel" />
+            <span class="campo__label">WhatsApp / telefone <abbr title="obrigatório">*</abbr></span>
+            <input id="cad-whatsapp" class="campo__input" type="tel" name="whatsapp_telefone" autocomplete="tel" required />
           </label>
           <label class="campo">
             <span class="campo__label">Bairro / distrito</span>

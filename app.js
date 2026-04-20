@@ -157,10 +157,10 @@ function montarFormDataCadastroNovo() {
   fd.append('nacionalidade', el('cad-nacionalidade')?.value || '');
   fd.append('cargo', el('cad-cargo')?.value || '');
   fd.append('sexo', el('cad-sexo')?.value || '');
+  fd.append('congregacao', el('cad-congregacao')?.value?.trim() || '');
+  fd.append('whatsapp_telefone', el('cad-whatsapp')?.value?.trim() || '');
 
   const opcionais = [
-    ['congregacao', 'cad-congregacao'],
-    ['whatsapp_telefone', 'cad-whatsapp'],
     ['bairro_distrito', 'cad-bairro'],
     ['endereco', 'cad-endereco'],
     ['nome_pai', 'cad-nome-pai'],

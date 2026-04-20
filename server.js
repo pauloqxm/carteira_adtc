@@ -790,6 +790,10 @@ app.post('/api/solicitacao-novo-membro', upload.single('foto'), async (req, res)
   if (cargoRes.erro) return res.status(400).json({ mensagem: cargoRes.erro });
   const sexoRes = textoObrigatorio(b.sexo, 'Sexo', 1);
   if (sexoRes.erro) return res.status(400).json({ mensagem: sexoRes.erro });
+  const congregacaoRes = textoObrigatorio(b.congregacao, 'Congregação', 2);
+  if (congregacaoRes.erro) return res.status(400).json({ mensagem: congregacaoRes.erro });
+  const whatsappRes = textoObrigatorio(b.whatsapp_telefone, 'WhatsApp / telefone', 8);
+  if (whatsappRes.erro) return res.status(400).json({ mensagem: whatsappRes.erro });
 
   const dca = parseOptionalDateIso(b.data_consag_auxiliar);
   const dcd = parseOptionalDateIso(b.data_consag_diacono);
@@ -923,13 +927,13 @@ app.post('/api/solicitacao-novo-membro', upload.single('foto'), async (req, res)
     nacionalidade: natRes.texto,
     cargo: cargoRes.texto,
     sexo: sexoRes.texto,
-    whatsapp_telefone: parseOptionalText(b.whatsapp_telefone),
+    whatsapp_telefone: whatsappRes.texto,
     bairro_distrito: parseOptionalText(b.bairro_distrito),
     endereco: parseOptionalText(b.endereco),
     nome_pai: parseOptionalText(b.nome_pai),
     nome_mae: parseOptionalText(b.nome_mae),
     naturalidade: parseOptionalText(b.naturalidade),
-    congregacao: parseOptionalText(b.congregacao),
+    congregacao: congregacaoRes.texto,
     data_consag_auxiliar: dca,
     data_consag_diacono: dcd,
     data_consag_presbitero: dcp,
