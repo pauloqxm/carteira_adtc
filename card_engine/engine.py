@@ -7,8 +7,12 @@ from __future__ import annotations
 
 import io
 import json
+import os
 from pathlib import Path
 from typing import Any
+
+_ENGINE_DIR = Path(__file__).resolve().parent
+_FONT_DIR = _ENGINE_DIR / "fonts"
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -99,14 +103,54 @@ LAYOUT_COSTA = _build_layout_costa()
 
 
 def _font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+    """Poppins (embutida em `card_engine/fonts/`) com fallback DejaVu / Arial."""
+    if bold:
+        poppins_candidates = [
+            _FONT_DIR / "Poppins-Bold.ttf",
+            _FONT_DIR / "Poppins-SemiBold.ttf",
+        ]
+    else:
+        # Texto “normal” ainda com peso alto (Poppins mais presente na carteira)
+        poppins_candidates = [
+            _FONT_DIR / "Poppins-SemiBold.ttf",
+            _FONT_DIR / "Poppins-Medium.ttf",
+        ]
+
+    windir = os.environ.get("WINDIR") or os.environ.get("SystemRoot")
+    if windir:
+        wf = Path(windir) / "Fonts"
+        if bold:
+            poppins_candidates.extend(
+                (wf / "Poppins-Bold.ttf", wf / "poppins-bold.ttf", wf / "Poppins-SemiBold.ttf")
+            )
+        else:
+            poppins_candidates.extend(
+                (
+                    wf / "Poppins-SemiBold.ttf",
+                    wf / "poppins-semibold.ttf",
+                    wf / "Poppins-Medium.ttf",
+                    wf / "poppins-medium.ttf",
+                )
+            )
+
+    for p in poppins_candidates:
+        if p.is_file():
+            try:
+                return ImageFont.truetype(str(p), size)
+            except OSError:
+                continue
+
     names = ("DejaVuSans-Bold.ttf", "DejaVuSans.ttf") if bold else ("DejaVuSans.ttf", "DejaVuSans-Bold.ttf")
     dirs = (
         "/usr/share/fonts/dejavu/",
         "/usr/share/fonts/TTF/",
         "/usr/share/fonts/truetype/dejavu/",
+        str(Path(windir) / "Fonts") if windir else "",
         "C:\\Windows\\Fonts\\",
     )
     for d in dirs:
+        if not d:
+            continue
         for n in names:
             p = Path(d) / n
             if p.exists():
