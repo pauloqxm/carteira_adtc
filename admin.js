@@ -1,3 +1,5 @@
+import { validarCpf, apenasDigitosCpf, formatarCpfMascara } from './validacao.js';
+
 const STORAGE_KEY = 'carteira_admin_token';
 
 let loginMode = 'token';
@@ -194,6 +196,7 @@ function acoesLinha() {
   return [
     { label: 'Aprovar', tipo: 'patch', status: 'aprovada', cls: 'btn--primario' },
     { label: 'Rejeitar', tipo: 'patch', status: 'rejeitada', cls: 'btn--secundario' },
+    { label: 'Editar', tipo: 'editar_membro', cls: 'btn--secundario' },
     { label: 'Carteira', tipo: 'carteira', cls: 'btn--secundario' },
     { label: 'Excluir', tipo: 'delete', cls: 'btn--excluir' },
   ];
@@ -227,7 +230,121 @@ function switchTab(nome) {
   el('tab-carteira').hidden = nome !== 'carteira';
 }
 
+function isoParaInputDate(iso) {
+  if (!iso) return '';
+  const s = String(iso);
+  return s.length >= 10 ? s.slice(0, 10) : '';
+}
+
+function fecharModalEditarMembro() {
+  const modal = el('modal-editar-membro');
+  if (modal) modal.hidden = true;
+  const msg = el('edit-membro-msg');
+  if (msg) {
+    msg.hidden = true;
+    msg.textContent = '';
+  }
+}
+
+function abrirModalEditarMembro(row) {
+  const m = row.membros;
+  if (!m || !m.id) {
+    alert('Dados do membro em falta nesta linha.');
+    return;
+  }
+  el('edit-membro-id').value = m.id;
+  el('edit-protocolo-ref').textContent = row.protocolo || '—';
+  el('edit-nome').value = m.nome_completo || '';
+  el('edit-cod-membro').value = m.cod_membro != null ? String(m.cod_membro) : '';
+  const cpfD = apenasDigitosCpf(m.cpf);
+  el('edit-cpf').value = cpfD ? formatarCpfMascara(cpfD) : '';
+  el('edit-data-nasc').value = isoParaInputDate(m.data_nasc);
+  el('edit-data-batismo').value = isoParaInputDate(m.data_batismo);
+  el('edit-nacionalidade').value = m.nacionalidade || '';
+  el('edit-estado-civil').value = m.estado_civil || '';
+  el('edit-cargo').value = m.cargo || '';
+  const sx = String(m.sexo || '').trim();
+  const sel = el('edit-sexo');
+  while (sel.options.length > 4) sel.remove(4);
+  const padrao = ['', 'Masculino', 'Feminino', 'Outro'];
+  if (padrao.includes(sx)) sel.value = sx;
+  else if (sx) {
+    const opt = document.createElement('option');
+    opt.value = sx;
+    opt.textContent = sx;
+    sel.appendChild(opt);
+    sel.value = sx;
+  } else sel.value = '';
+  const msg = el('edit-membro-msg');
+  msg.hidden = true;
+  msg.textContent = '';
+  el('modal-editar-membro').hidden = false;
+}
+
+async function guardarEdicaoMembro() {
+  const id = el('edit-membro-id').value.trim();
+  const msg = el('edit-membro-msg');
+  msg.hidden = true;
+  if (!id) return;
+
+  const nome = el('edit-nome').value.trim();
+  if (nome.length < 2) {
+    msg.textContent = 'Indique um nome completo válido.';
+    msg.hidden = false;
+    return;
+  }
+  const cpfDigits = apenasDigitosCpf(el('edit-cpf').value);
+  if (cpfDigits) {
+    const v = validarCpf(cpfDigits);
+    if (!v.valido) {
+      msg.textContent = v.motivo || 'CPF inválido.';
+      msg.hidden = false;
+      return;
+    }
+  }
+
+  const codRaw = el('edit-cod-membro').value.trim();
+  const cod = parseInt(codRaw, 10);
+  if (!Number.isInteger(cod) || cod < 1) {
+    msg.textContent = 'Código de membro inválido.';
+    msg.hidden = false;
+    return;
+  }
+
+  const body = {
+    nome_completo: nome,
+    cod_membro: cod,
+    cpf: cpfDigits || null,
+    data_nasc: el('edit-data-nasc').value || null,
+    data_batismo: el('edit-data-batismo').value || null,
+    nacionalidade: el('edit-nacionalidade').value.trim() || null,
+    estado_civil: el('edit-estado-civil').value.trim() || null,
+    cargo: el('edit-cargo').value.trim() || null,
+    sexo: el('edit-sexo').value.trim() || null,
+  };
+
+  const btn = el('btn-editar-guardar');
+  btn.disabled = true;
+  try {
+    await api(`/api/admin/membros/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    });
+    fecharModalEditarMembro();
+    await carregarLista();
+  } catch (e) {
+    msg.textContent = e.message || 'Falha ao guardar.';
+    msg.hidden = false;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 async function onAcao(row, ac) {
+  if (ac.tipo === 'editar_membro') {
+    abrirModalEditarMembro(row);
+    return;
+  }
   if (ac.tipo === 'carteira') {
     switchTab('carteira');
     invalidarCacheCarteiraPdf();
@@ -483,6 +600,17 @@ async function init() {
 
   el('btn-visualizar-pdf').addEventListener('click', () => visualizarCarteiraPdf());
   el('btn-gerar-pdf').addEventListener('click', () => descarregarCarteiraPdf());
+
+  el('modal-editar-backdrop').addEventListener('click', fecharModalEditarMembro);
+  el('btn-editar-cancelar').addEventListener('click', fecharModalEditarMembro);
+  el('btn-editar-guardar').addEventListener('click', () => guardarEdicaoMembro());
+  const cpfEdit = el('edit-cpf');
+  if (cpfEdit) {
+    cpfEdit.addEventListener('input', () => {
+      const d = apenasDigitosCpf(cpfEdit.value);
+      cpfEdit.value = d ? formatarCpfMascara(d) : '';
+    });
+  }
 }
 
 init();

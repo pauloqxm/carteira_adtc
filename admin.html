@@ -120,6 +120,61 @@
     </div>
   </main>
 
+  <div id="modal-editar-membro" class="admin-modal" hidden>
+    <div class="admin-modal__backdrop" id="modal-editar-backdrop"></div>
+    <div class="admin-modal__card card" role="dialog" aria-modal="true" aria-labelledby="modal-editar-titulo">
+      <h2 id="modal-editar-titulo" class="card__titulo">Editar dados do membro</h2>
+      <p class="card__texto card__texto--peq">Solicitação <strong id="edit-protocolo-ref">—</strong></p>
+      <input type="hidden" id="edit-membro-id" value="" />
+      <p id="edit-membro-msg" class="admin-msg" hidden></p>
+      <label class="campo">
+        <span class="campo__label">Nome completo</span>
+        <input id="edit-nome" class="campo__input" type="text" autocomplete="name" />
+      </label>
+      <label class="campo">
+        <span class="campo__label">Código de membro</span>
+        <input id="edit-cod-membro" class="campo__input" type="number" min="1" step="1" />
+      </label>
+      <label class="campo">
+        <span class="campo__label">CPF</span>
+        <input id="edit-cpf" class="campo__input" type="text" inputmode="numeric" maxlength="14" placeholder="000.000.000-00" />
+      </label>
+      <label class="campo">
+        <span class="campo__label">Data de nascimento</span>
+        <input id="edit-data-nasc" class="campo__input" type="date" />
+      </label>
+      <label class="campo">
+        <span class="campo__label">Data de batismo</span>
+        <input id="edit-data-batismo" class="campo__input" type="date" />
+      </label>
+      <label class="campo">
+        <span class="campo__label">Nacionalidade</span>
+        <input id="edit-nacionalidade" class="campo__input" type="text" />
+      </label>
+      <label class="campo">
+        <span class="campo__label">Estado civil</span>
+        <input id="edit-estado-civil" class="campo__input" type="text" />
+      </label>
+      <label class="campo">
+        <span class="campo__label">Cargo</span>
+        <input id="edit-cargo" class="campo__input" type="text" />
+      </label>
+      <label class="campo">
+        <span class="campo__label">Sexo</span>
+        <select id="edit-sexo" class="campo__input">
+          <option value="">—</option>
+          <option value="Masculino">Masculino</option>
+          <option value="Feminino">Feminino</option>
+          <option value="Outro">Outro</option>
+        </select>
+      </label>
+      <div class="admin-modal__actions">
+        <button type="button" id="btn-editar-cancelar" class="btn btn--fantasma">Cancelar</button>
+        <button type="button" id="btn-editar-guardar" class="btn btn--primario">Guardar alterações</button>
+      </div>
+    </div>
+  </div>
+
   <footer class="rodape">
     <p><a href="/" style="color: inherit">← Voltar ao formulário público</a></p>
   </footer>

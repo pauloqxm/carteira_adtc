@@ -7,7 +7,12 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import multer from 'multer';
 import { createClient } from '@supabase/supabase-js';
-import { TAMANHO_MAX_FOTO_BYTES, TIPOS_FOTO_ACEITOS } from './validacao.js';
+import {
+  TAMANHO_MAX_FOTO_BYTES,
+  TIPOS_FOTO_ACEITOS,
+  validarCpf,
+  apenasDigitosCpf,
+} from './validacao.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -235,7 +240,9 @@ app.get('/api/admin/solicitacoes', requireAdmin, async (req, res) => {
   if (ids.length) {
     const { data: mems, error: e2 } = await supabaseAdmin
       .from('membros')
-      .select('id, nome_completo, cod_membro, cpf')
+      .select(
+        'id, nome_completo, cod_membro, cpf, data_nasc, nacionalidade, estado_civil, data_batismo, cargo, sexo',
+      )
       .in('id', ids);
     if (e2) {
       console.error(e2);
@@ -295,6 +302,114 @@ app.delete('/api/admin/solicitacoes/:id', requireAdmin, async (req, res) => {
     return res.status(404).json({ mensagem: 'Solicitação não encontrada.' });
   }
   res.json({ ok: true });
+});
+
+/** Data YYYY-MM-DD ou null; string vazia → null. */
+function parseOptionalDateIso(val) {
+  if (val === null || val === undefined || val === '') return null;
+  const s = String(val).trim();
+  if (!s) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  return undefined;
+}
+
+/** Texto opcional: vazio → null. */
+function parseOptionalText(val) {
+  if (val === null || val === undefined) return null;
+  const s = String(val).trim();
+  return s.length ? s : null;
+}
+
+app.patch('/api/admin/membros/:id', requireAdmin, async (req, res) => {
+  if (!supabaseAdmin) {
+    return res.status(500).json({ mensagem: 'Servidor sem credencial Supabase.' });
+  }
+  const { id } = req.params;
+  if (!UUID_RE.test(id)) {
+    return res.status(400).json({ mensagem: 'ID de membro inválido.' });
+  }
+  const body = req.body && typeof req.body === 'object' ? req.body : {};
+  const patch = {};
+
+  if (Object.prototype.hasOwnProperty.call(body, 'nome_completo')) {
+    const n = String(body.nome_completo ?? '').trim();
+    if (n.length < 2) {
+      return res.status(400).json({ mensagem: 'Nome completo deve ter pelo menos 2 caracteres.' });
+    }
+    patch.nome_completo = n;
+  }
+  if (Object.prototype.hasOwnProperty.call(body, 'cpf')) {
+    const d = apenasDigitosCpf(body.cpf);
+    if (!d) {
+      patch.cpf = null;
+    } else {
+      const v = validarCpf(d);
+      if (!v.valido) {
+        return res.status(400).json({ mensagem: v.motivo || 'CPF inválido.' });
+      }
+      patch.cpf = d;
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(body, 'data_nasc')) {
+    const d = parseOptionalDateIso(body.data_nasc);
+    if (d === undefined) {
+      return res.status(400).json({ mensagem: 'Data de nascimento inválida (use AAAA-MM-DD).' });
+    }
+    patch.data_nasc = d;
+  }
+  if (Object.prototype.hasOwnProperty.call(body, 'data_batismo')) {
+    const d = parseOptionalDateIso(body.data_batismo);
+    if (d === undefined) {
+      return res.status(400).json({ mensagem: 'Data de batismo inválida (use AAAA-MM-DD).' });
+    }
+    patch.data_batismo = d;
+  }
+  if (Object.prototype.hasOwnProperty.call(body, 'nacionalidade')) {
+    patch.nacionalidade = parseOptionalText(body.nacionalidade);
+  }
+  if (Object.prototype.hasOwnProperty.call(body, 'estado_civil')) {
+    patch.estado_civil = parseOptionalText(body.estado_civil);
+  }
+  if (Object.prototype.hasOwnProperty.call(body, 'cargo')) {
+    patch.cargo = parseOptionalText(body.cargo);
+  }
+  if (Object.prototype.hasOwnProperty.call(body, 'sexo')) {
+    patch.sexo = parseOptionalText(body.sexo);
+  }
+  if (Object.prototype.hasOwnProperty.call(body, 'cod_membro')) {
+    const c = Number(body.cod_membro);
+    if (!Number.isInteger(c) || c < 1) {
+      return res.status(400).json({ mensagem: 'Código de membro inválido.' });
+    }
+    const { data: dupe, error: eDupe } = await supabaseAdmin
+      .from('membros')
+      .select('id')
+      .eq('cod_membro', c)
+      .neq('id', id)
+      .maybeSingle();
+    if (eDupe) {
+      console.error(eDupe);
+      return res.status(500).json({ mensagem: 'Erro ao validar código de membro.' });
+    }
+    if (dupe) {
+      return res.status(409).json({ mensagem: 'Já existe outro membro com este código.' });
+    }
+    patch.cod_membro = c;
+  }
+
+  if (Object.keys(patch).length === 0) {
+    return res.status(400).json({ mensagem: 'Nenhum campo para atualizar.' });
+  }
+
+  const { data, error } = await supabaseAdmin.from('membros').update(patch).eq('id', id).select().maybeSingle();
+  if (error) {
+    console.error(error);
+    return res.status(500).json({ mensagem: 'Erro ao atualizar o membro.' });
+  }
+  if (!data) {
+    return res.status(404).json({ mensagem: 'Membro não encontrado.' });
+  }
+  res.json({ ok: true, membro: data });
 });
 
 function dataHojeBR() {
