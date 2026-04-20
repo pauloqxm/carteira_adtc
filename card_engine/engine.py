@@ -15,8 +15,8 @@ from PIL import Image, ImageDraw, ImageFont
 # --- Coordenadas em pixels (canvas 595×375) — calibradas para os templates AD ---
 # Referência de “linha” ≈ 18 px (altura útil de texto pequeno).
 _LINHA = 18
-_FRENTE_DESCER = 3 * _LINHA  # baixar toda a frente (foto + textos)
-_COSTA_SUBIR = 1 * _LINHA  # subir verso
+_FRENTE_DESCER = 4 * _LINHA  # baixar toda a frente (foto + textos)
+_COSTA_SUBIR = 2 * _LINHA  # subir verso
 
 LAYOUT_FRENTE = {
     # caixa foto 3:4 (cobre com crop)
