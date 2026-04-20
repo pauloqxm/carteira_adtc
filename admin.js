@@ -280,6 +280,25 @@ function invalidarCacheCarteiraPdf() {
   fecharPreviewCarteira();
 }
 
+/** Extrai o nome do ficheiro de Content-Disposition (prioriza filename* UTF-8, RFC 5987). */
+function parseFilenameContentDisposition(header) {
+  if (!header || typeof header !== 'string') return 'carteira.pdf';
+  const mStar = header.match(/filename\*\s*=\s*UTF-8''([^;\s]+)/i);
+  if (mStar && mStar[1]) {
+    try {
+      const dec = decodeURIComponent(mStar[1].trim());
+      if (dec) return dec;
+    } catch {
+      /* ignore */
+    }
+  }
+  const quoted = header.match(/filename\s*=\s*"((?:\\.|[^"\\])*)"/i);
+  if (quoted) return quoted[1].replace(/\\"/g, '"');
+  const plain = header.match(/filename\s*=\s*([^;\s]+)/i);
+  if (plain) return plain[1].trim().replace(/^"+|"+$/g, '');
+  return 'carteira.pdf';
+}
+
 async function obterBlobCarteiraGerada() {
   const sid = el('carteira-solicitacao-id').value.trim();
   const prot = el('carteira-protocolo').value.trim();
@@ -307,9 +326,7 @@ async function obterBlobCarteiraGerada() {
   }
   const blob = await res.blob();
   const cd = res.headers.get('Content-Disposition');
-  let fname = 'carteira.pdf';
-  const m = cd && cd.match(/filename="([^"]+)"/);
-  if (m) fname = m[1];
+  const fname = parseFilenameContentDisposition(cd);
   carteiraPdfCache = { chave, blob, fname };
   return carteiraPdfCache;
 }

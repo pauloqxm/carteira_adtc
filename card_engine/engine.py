@@ -24,7 +24,7 @@ _SPACE = 12  # “um espaço” em X (largura aproximada de carácter)
 _RENDER_SCALE = 2
 _PDF_BASE_DPI = 150.0  # referência com canvas 1×; com _RENDER_SCALE=2 usa o dobro de DPI para manter o tamanho físico no PDF
 
-_LIM_NOME_VISUAL = 25  # máximo de caracteres mostrados no nome (inclui reticências se truncar)
+_LIM_NOME_VISUAL = 30  # máximo de caracteres mostrados no nome (inclui reticências se truncar)
 
 _FRENTE_DESCER = 4 * _LINHA  # ajuste global frente (foto + textos)
 _COSTA_SUBIR = 2 * _LINHA  # ajuste global verso
