@@ -7,29 +7,33 @@ from __future__ import annotations
 
 import io
 import json
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from PIL import Image, ImageDraw, ImageFont
 
 # --- Coordenadas em pixels (canvas 595×375) — calibradas para os templates AD ---
+# Referência de “linha” ≈ 18 px (altura útil de texto pequeno).
+_LINHA = 18
+_FRENTE_DESCER = 3 * _LINHA  # baixar toda a frente (foto + textos)
+_COSTA_SUBIR = 1 * _LINHA  # subir verso
+
 LAYOUT_FRENTE = {
     # caixa foto 3:4 (cobre com crop)
-    "foto_box": (26, 86, 156, 259),
-    "nome": (168, 98, 575, 142),
-    "cargo": (168, 158, 318, 188),
-    "expedicao": (328, 158, 565, 188),
-    "nasc": (168, 208, 288, 248),
-    "batismo": (298, 208, 418, 248),
-    "civil": (428, 208, 565, 248),
+    "foto_box": (26, 86 + _FRENTE_DESCER, 156, 259 + _FRENTE_DESCER),
+    "nome": (168, 98 + _FRENTE_DESCER, 575, 142 + _FRENTE_DESCER),
+    "cargo": (168, 158 + _FRENTE_DESCER, 318, 188 + _FRENTE_DESCER),
+    "expedicao": (328, 158 + _FRENTE_DESCER, 565, 188 + _FRENTE_DESCER),
+    "nasc": (168, 208 + _FRENTE_DESCER, 288, 248 + _FRENTE_DESCER),
+    "batismo": (298, 208 + _FRENTE_DESCER, 418, 248 + _FRENTE_DESCER),
+    "civil": (428, 208 + _FRENTE_DESCER, 565, 248 + _FRENTE_DESCER),
 }
 
 LAYOUT_COSTA = {
-    "cpf": (32, 178, 198, 218),
-    "nacionalidade": (208, 178, 388, 218),
-    "cod": (398, 178, 568, 218),
-    "qr": (478, 248, 575, 355),
+    "cpf": (32, 178 - _COSTA_SUBIR, 198, 218 - _COSTA_SUBIR),
+    "nacionalidade": (208, 178 - _COSTA_SUBIR, 388, 218 - _COSTA_SUBIR),
+    "cod": (398, 178 - _COSTA_SUBIR, 568, 218 - _COSTA_SUBIR),
+    "qr": (478, 248 - _COSTA_SUBIR, 575, 355 - _COSTA_SUBIR),
 }
 
 
