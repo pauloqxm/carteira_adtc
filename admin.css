@@ -12,7 +12,7 @@
   font-family: inherit;
   border-radius: 10px;
   border: 1px solid var(--cor-borda);
-  background: #0f1c17;
+  background: var(--cor-input-bg);
   color: var(--cor-texto-mudo);
   cursor: pointer;
   transition: border-color 0.15s, color 0.15s;
@@ -20,13 +20,13 @@
 
 .admin-tab:hover {
   color: var(--cor-texto);
-  border-color: #3d5a4c;
+  border-color: var(--cor-borda-forte);
 }
 
 .admin-tab--active {
   color: var(--cor-prim-hover);
   border-color: var(--cor-prim);
-  background: rgba(61, 154, 111, 0.12);
+  background: var(--cor-prim-suave);
 }
 
 .admin-tab-panel {
@@ -45,7 +45,7 @@
   margin-top: 1rem;
   border: 1px solid var(--cor-borda);
   border-radius: var(--raio);
-  background: #0a1210;
+  background: var(--cor-painel-inset);
 }
 
 .carteira-preview[hidden] {
@@ -60,6 +60,33 @@
   gap: 1rem;
   max-width: 1100px;
   margin: 0 auto;
+}
+
+.topo__marca-admin {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.topo__marca-admin-texto {
+  min-width: 0;
+}
+
+.topo__marca-admin .topo__logo {
+  width: 48px;
+  height: 48px;
+}
+
+.topo__marca-admin .topo__marca-sup {
+  font-size: 0.68rem;
+  margin-bottom: 0.05rem;
+}
+
+.topo__marca-admin .topo__titulo {
+  margin: 0;
+  font-size: 1.2rem;
 }
 
 .btn-sair-top {
@@ -94,7 +121,7 @@
   padding: 0.45rem 0.65rem;
   border-radius: 8px;
   border: 1px solid var(--cor-borda);
-  background: #0f1c17;
+  background: var(--cor-input-bg);
   color: var(--cor-texto);
   font-family: inherit;
 }
@@ -138,7 +165,7 @@
   object-fit: cover;
   border-radius: 8px;
   border: 1px solid var(--cor-borda);
-  background: #0a1410;
+  background: var(--cor-painel-inset);
 }
 
 .admin-acoes {
