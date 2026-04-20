@@ -503,13 +503,13 @@ app.post('/api/admin/gerar-carteira', requireAdmin, async (req, res) => {
   if (solicitacaoId && UUID_RE.test(solicitacaoId)) {
     solQuery = supabaseAdmin
       .from('solicitacoes')
-      .select('id, protocolo, foto_url, status_solicitacao, membro_id, membros(*)')
+      .select('id, protocolo, foto_url, status_solicitacao, membro_id, congregacao_nome, membros(*)')
       .eq('id', solicitacaoId)
       .maybeSingle();
   } else if (protocolo) {
     solQuery = supabaseAdmin
       .from('solicitacoes')
-      .select('id, protocolo, foto_url, status_solicitacao, membro_id, membros(*)')
+      .select('id, protocolo, foto_url, status_solicitacao, membro_id, congregacao_nome, membros(*)')
       .eq('protocolo', protocolo)
       .maybeSingle();
   } else {
@@ -529,7 +529,7 @@ app.post('/api/admin/gerar-carteira', requireAdmin, async (req, res) => {
   if (!membro || typeof membro !== 'object' || Array.isArray(membro)) {
     return res.status(500).json({ mensagem: 'Dados do membro em falta.' });
   }
-  let congregacaoNome = String(membro.congregacao_nome || '').trim();
+  let congregacaoNome = String(sol.congregacao_nome || membro.congregacao_nome || '').trim();
   if (!congregacaoNome) {
     const { data: novoCad, error: eNovoCad } = await supabaseAdmin
       .from('novo_membro')
@@ -696,6 +696,10 @@ app.post('/api/solicitacao', upload.single('foto'), async (req, res) => {
   if (!membroId || typeof membroId !== 'string') {
     return res.status(400).json({ mensagem: 'membro_id obrigatório.' });
   }
+  const congregacaoNome = String(req.body?.congregacao_nome || '').trim();
+  if (congregacaoNome.length < 2) {
+    return res.status(400).json({ mensagem: 'congregacao_nome obrigatório.' });
+  }
 
   const file = req.file;
   if (!file || !file.buffer) {
@@ -758,6 +762,7 @@ app.post('/api/solicitacao', upload.single('foto'), async (req, res) => {
       .insert({
         membro_id: membroId,
         foto_url: fotoUrl,
+        congregacao_nome: congregacaoNome,
         protocolo,
         status_solicitacao: 'pendente',
       })

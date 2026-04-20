@@ -38,6 +38,8 @@ function preencherResumo(membro) {
   el('res-batismo').textContent = formatarDataBR(membro.data_batismo);
   el('res-cargo').textContent = membro.cargo || '—';
   el('res-sexo').textContent = membro.sexo || '—';
+  const inputCong = el('dados-congregacao');
+  if (inputCong) inputCong.value = '';
 }
 
 function setMensagemCpF(texto, tipo) {
@@ -118,6 +120,12 @@ async function onEnviarSolicitacao() {
     alert('Busque um membro válido antes de enviar.');
     return;
   }
+  const congregacao = el('dados-congregacao')?.value?.trim() || '';
+  if (congregacao.length < 2) {
+    alert('Informe a congregação para continuar.');
+    el('dados-congregacao')?.focus();
+    return;
+  }
   const file = getArquivoFotoAtual();
   const v = validarArquivoFoto(file);
   if (!v.valido) {
@@ -127,6 +135,7 @@ async function onEnviarSolicitacao() {
 
   const fd = new FormData();
   fd.append('membro_id', membroSelecionado.id);
+  fd.append('congregacao_nome', congregacao);
   fd.append('foto', file, file.name || 'foto.jpg');
 
   const btn = el('btn-enviar');
@@ -237,6 +246,8 @@ function init() {
   el('btn-nova')?.addEventListener('click', () => {
     membroSelecionado = null;
     if (cpfInput) cpfInput.value = '';
+    const dadosCong = el('dados-congregacao');
+    if (dadosCong) dadosCong.value = '';
     setMensagemCpF('', '');
     limparFoto();
     limparFotoNovo();
