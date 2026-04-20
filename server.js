@@ -333,6 +333,21 @@ function textoObrigatorio(val, nomeCampo, minLen = 2) {
   return { texto: s };
 }
 
+async function obterProximoCodMembro() {
+  const { data, error } = await supabaseAdmin
+    .from('membros')
+    .select('cod_membro')
+    .order('cod_membro', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) {
+    throw error;
+  }
+  const atual = Number(data?.cod_membro);
+  if (!Number.isInteger(atual) || atual < 1) return 1;
+  return atual + 1;
+}
+
 /** Texto opcional: vazio → null. */
 function parseOptionalText(val) {
   if (val === null || val === undefined) return null;
@@ -762,11 +777,6 @@ app.post('/api/solicitacao-novo-membro', upload.single('foto'), async (req, res)
     return res.status(400).json({ mensagem: cpfVal.motivo || 'CPF inválido.' });
   }
 
-  const cod = Number(b.cod_membro);
-  if (!Number.isInteger(cod) || cod < 1) {
-    return res.status(400).json({ mensagem: 'Código de membro inválido.' });
-  }
-
   const dn = parseRequiredDateIso(b.data_nasc, 'Data de nascimento');
   if (dn.erro) return res.status(400).json({ mensagem: dn.erro });
   const db = parseRequiredDateIso(b.data_batismo, 'Data de batismo');
@@ -803,38 +813,42 @@ app.post('/api/solicitacao-novo-membro', upload.single('foto'), async (req, res)
     });
   }
 
-  const { data: dupeCod, error: errCod } = await supabaseAdmin
-    .from('membros')
-    .select('id')
-    .eq('cod_membro', cod)
-    .maybeSingle();
-  if (errCod) {
-    console.error(errCod);
-    return res.status(500).json({ mensagem: 'Erro ao validar código de membro.' });
-  }
-  if (dupeCod) {
-    return res.status(409).json({ mensagem: 'Já existe membro com este código. Confira o número com a secretaria.' });
-  }
-
-  const { data: membroNovo, error: errInsM } = await supabaseAdmin
-    .from('membros')
-    .insert({
-      cod_membro: cod,
-      nome_completo: nomeRes.texto,
-      cpf: cpfDigits,
-      data_nasc: dn.data,
-      nacionalidade: natRes.texto,
-      estado_civil: estRes.texto,
-      data_batismo: db.data,
-      cargo: cargoRes.texto,
-      sexo: sexoRes.texto,
-    })
-    .select('id, cod_membro')
-    .single();
-
-  if (errInsM || !membroNovo) {
+  let membroNovo = null;
+  for (let tentativa = 0; tentativa < 8; tentativa++) {
+    let proximoCod = 0;
+    try {
+      proximoCod = await obterProximoCodMembro();
+    } catch (errCod) {
+      console.error(errCod);
+      return res.status(500).json({ mensagem: 'Erro ao obter próximo código de membro.' });
+    }
+    const { data: insM, error: errInsM } = await supabaseAdmin
+      .from('membros')
+      .insert({
+        cod_membro: proximoCod,
+        nome_completo: nomeRes.texto,
+        cpf: cpfDigits,
+        data_nasc: dn.data,
+        nacionalidade: natRes.texto,
+        estado_civil: estRes.texto,
+        data_batismo: db.data,
+        cargo: cargoRes.texto,
+        sexo: sexoRes.texto,
+      })
+      .select('id, cod_membro')
+      .single();
+    if (!errInsM && insM) {
+      membroNovo = insM;
+      break;
+    }
+    if (errInsM?.code === '23505') {
+      continue;
+    }
     console.error(errInsM);
     return res.status(500).json({ mensagem: 'Falha ao criar cadastro do membro.' });
+  }
+  if (!membroNovo) {
+    return res.status(500).json({ mensagem: 'Não foi possível gerar código de membro automático.' });
   }
 
   const membroId = membroNovo.id;
@@ -900,7 +914,7 @@ app.post('/api/solicitacao-novo-membro', upload.single('foto'), async (req, res)
     membro_id: membroId,
     protocolo: insSol.protocolo,
     foto_url: fotoUrl,
-    cod_membro: cod,
+    cod_membro: membroNovo.cod_membro,
     nome_completo: nomeRes.texto,
     cpf: cpfDigits,
     data_nasc: dn.data,

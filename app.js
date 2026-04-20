@@ -149,8 +149,6 @@ async function onEnviarSolicitacao() {
 
 function montarFormDataCadastroNovo() {
   const fd = new FormData();
-  const cod = el('cad-cod-membro')?.value;
-  fd.append('cod_membro', cod != null ? String(cod) : '');
   fd.append('nome_completo', el('cad-nome')?.value?.trim() || '');
   fd.append('cpf', el('cad-cpf')?.value || '');
   fd.append('data_nasc', el('cad-data-nasc')?.value || '');

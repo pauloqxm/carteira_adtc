@@ -58,20 +58,9 @@
       <form id="form-cadastro-novo" class="form-cadastro-novo">
         <fieldset class="form-cadastro-novo__grupo">
           <legend class="form-cadastro-novo__legenda">Dados da carteira</legend>
-          <label class="campo">
-            <span class="campo__label">Código de membro <abbr title="obrigatório">*</abbr></span>
-            <input
-              id="cad-cod-membro"
-              class="campo__input"
-              type="number"
-              name="cod_membro"
-              inputmode="numeric"
-              min="1"
-              step="1"
-              required
-              placeholder="Número informado pela secretaria"
-            />
-          </label>
+          <p class="card__texto card__texto--peq">
+            O código de membro será gerado automaticamente a partir do último cadastro existente.
+          </p>
           <label class="campo">
             <span class="campo__label">Nome completo <abbr title="obrigatório">*</abbr></span>
             <input id="cad-nome" class="campo__input" type="text" name="nome_completo" required autocomplete="name" />
