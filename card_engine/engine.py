@@ -23,6 +23,8 @@ _SPACE = 12  # “um espaço” em X (largura aproximada de carácter)
 _RENDER_SCALE = 2
 _PDF_BASE_DPI = 150.0  # referência com canvas 1×; com _RENDER_SCALE=2 usa o dobro de DPI para manter o tamanho físico no PDF
 
+_LIM_NOME_VISUAL = 25  # máximo de caracteres mostrados no nome (inclui reticências se truncar)
+
 _FRENTE_DESCER = 4 * _LINHA  # ajuste global frente (foto + textos)
 _COSTA_SUBIR = 2 * _LINHA  # ajuste global verso
 
@@ -68,6 +70,10 @@ def _build_layout_frente() -> dict[str, tuple[int, int, int, int]]:
     out["nome"] = _box_dx(out["nome"], _SPACE)
     # estado civil: “voltar” = à esquerda 3 espaços
     out["civil"] = _box_dx(out["civil"], -3 * _SPACE)
+    # cargo: avançar 2 espaços (à direita)
+    out["cargo"] = _box_dx(out["cargo"], 2 * _SPACE)
+    # data de batismo: voltar 2 espaços (à esquerda)
+    out["batismo"] = _box_dx(out["batismo"], -2 * _SPACE)
     # Expedição: voltar 2 espaços (à esquerda)
     out["expedicao"] = _box_dx(out["expedicao"], -2 * _SPACE)
     # Cargo e Expedição: subir ½ “espaço” (em Y)
@@ -209,6 +215,33 @@ def _draw_text_in_box_tl(
     draw.text((x1 + inset, y1 + inset), text, font=font, fill=fill, anchor="lt")
 
 
+def _text_width(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont) -> int:
+    if not text:
+        return 0
+    b = draw.textbbox((0, 0), text, font=font)
+    return b[2] - b[0]
+
+
+def _draw_text_in_box_mm_pair(
+    draw: ImageDraw.ImageDraw,
+    box: tuple[int, int, int, int],
+    left: str,
+    font_left: ImageFont.ImageFont,
+    right: str,
+    font_right: ImageFont.ImageFont,
+    fill: tuple[int, int, int] = (255, 255, 255),
+) -> None:
+    """Uma linha centrada na caixa: `left` + `right` com fontes distintas (ex.: rótulo + data)."""
+    x1, y1, x2, y2 = box
+    cx = (x1 + x2) // 2
+    cy = (y1 + y2) // 2
+    w_l = _text_width(draw, left, font_left)
+    w_r = _text_width(draw, right, font_right)
+    start_x = int(cx - (w_l + w_r) / 2)
+    draw.text((start_x, cy), left, font=font_left, fill=fill, anchor="lm")
+    draw.text((start_x + w_l, cy), right, font=font_right, fill=fill, anchor="lm")
+
+
 def _paste_foto_cover(base: Image.Image, foto: Image.Image, box: tuple[int, int, int, int]) -> None:
     x1, y1, x2, y2 = box
     w, h = x2 - x1, y2 - y1
@@ -245,20 +278,23 @@ def render_frente(
 
     fnome = _font(int(17 * s), bold=True)
     fmed = _font(int(13 * s), bold=True)
+    fmed_label = _font(int(13 * s), bold=False)  # “Expedição:” sem negrito; só a data em negrito
     fsmall = _font(int(11 * s), bold=True)
     tl_inset = max(2, int(4 * s))
 
     nome = str(dados.get("nome_completo") or "").strip() or "—"
-    lim_nome = max(20, int(44 / s))
-    if len(nome) > lim_nome:
-        nome = nome[: max(3, lim_nome - 2)] + "…"
+    if len(nome) > _LIM_NOME_VISUAL:
+        nome = nome[: max(1, _LIM_NOME_VISUAL - 1)] + "…"
     _draw_text_in_box_tl(draw, L["nome"], nome, fnome, inset=tl_inset)
 
     cargo = str(dados.get("cargo") or "—").strip()
     _draw_text_in_box(draw, L["cargo"], cargo, fmed)
 
     exp = str(dados.get("data_expedicao") or "").strip()
-    _draw_text_in_box(draw, L["expedicao"], f"Expedição: {exp}" if exp else "—", fmed)
+    if exp:
+        _draw_text_in_box_mm_pair(draw, L["expedicao"], "Expedição: ", fmed_label, exp, fmed)
+    else:
+        _draw_text_in_box(draw, L["expedicao"], "—", fmed_label)
 
     _draw_text_in_box(draw, L["nasc"], _fmt_data_br(dados.get("data_nasc")), fsmall)
     _draw_text_in_box(draw, L["batismo"], _fmt_data_br(dados.get("data_batismo")), fsmall)
