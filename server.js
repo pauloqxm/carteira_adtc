@@ -138,9 +138,9 @@ app.get('/config.js', (_req, res) => {
 window.__SUPABASE_ANON_KEY__ = ${JSON.stringify(SUPABASE_ANON_KEY)};`);
 });
 
-function gerarProtocolo() {
+function gerarProtocolo(prefixo = 'ECL') {
   const suffix = String(Date.now()).slice(-6);
-  return `ECL-${suffix}`;
+  return `${prefixo}-${suffix}`;
 }
 
 /** Nome sugerido para o PDF da carteira (UTF-8 + fallback ASCII para o cabeçalho HTTP). */
@@ -876,7 +876,7 @@ app.post('/api/solicitacao-novo-membro', upload.single('foto'), async (req, res)
   const { data: pub } = supabaseAdmin.storage.from('fotos-membros').getPublicUrl(objectPath);
   const fotoUrl = pub?.publicUrl || '';
 
-  let protocolo = gerarProtocolo();
+  let protocolo = gerarProtocolo('NOV');
   let solicitacaoId = '';
   let insSol = null;
 
@@ -899,7 +899,7 @@ app.post('/api/solicitacao-novo-membro', upload.single('foto'), async (req, res)
       break;
     }
     if (insErr?.code === '23505') {
-      protocolo = gerarProtocolo();
+      protocolo = gerarProtocolo('NOV');
       continue;
     }
     console.error(insErr);
