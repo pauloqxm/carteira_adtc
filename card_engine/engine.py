@@ -59,6 +59,7 @@ _BASE_COSTA = {
     "cpf": (32, 178, 198, 218),
     "nacionalidade": (208, 178, 388, 218),
     "cod": (398, 178, 568, 218),
+    "congregacao_discreta": (24, 338, 370, 360),
     "qr": (478, 248, 575, 355),
 }
 
@@ -337,11 +338,24 @@ def render_costa(
     draw = ImageDraw.Draw(base)
     L = {k: _scale_box(v, s) for k, v in LAYOUT_COSTA.items()}
     fmed = _font(int(13 * s), bold=True)
+    fdiscreta = _font(int(8 * s), bold=False)
 
     _draw_text_in_box(draw, L["cpf"], _fmt_cpf(dados.get("cpf")), fmed)
     _draw_text_in_box(draw, L["nacionalidade"], str(dados.get("nacionalidade") or "—"), fmed)
     cod = dados.get("cod_membro")
     _draw_text_in_box(draw, L["cod"], str(cod) if cod is not None else "—", fmed)
+    congregacao = str(dados.get("congregacao_nome") or "").strip()
+    if congregacao:
+        if len(congregacao) > 42:
+            congregacao = congregacao[:41] + "…"
+        _draw_text_in_box_tl(
+            draw,
+            L["congregacao_discreta"],
+            congregacao,
+            fdiscreta,
+            fill=(210, 210, 210),
+            inset=max(1, int(2 * s)),
+        )
 
     try:
         import qrcode
