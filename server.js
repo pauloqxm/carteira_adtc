@@ -47,6 +47,7 @@ const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 const ADMIN_SECRET = process.env.ADMIN_SECRET || '';
 const ADMIN_PASSWORD_SHA256 = (process.env.ADMIN_PASSWORD_SHA256 || '').trim().toLowerCase();
 const ADMIN_USERNAME = (process.env.ADMIN_USERNAME || 'admin').trim();
+const ADMIN_CREDENTIALS = (process.env.ADMIN_CREDENTIALS || '').trim();
 const PUBLIC_SITE_URL = (process.env.PUBLIC_SITE_URL || '').replace(/\/$/, '');
 const ALLOW_IFRAME = /^true$/i.test((process.env.ALLOW_IFRAME || 'false').trim());
 
@@ -72,9 +73,33 @@ const ALLOWED_FRAME_ANCESTORS = parseAllowedFrameAncestors(process.env.ALLOWED_F
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ADMIN_SESSION_MS = 12 * 60 * 60 * 1000;
+const HASH_HEX_64_RE = /^[0-9a-f]{64}$/i;
+
+function parseAdminCredentials(raw) {
+  const map = new Map();
+  const itens = String(raw || '')
+    .split(';')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  for (const item of itens) {
+    const sep = item.indexOf(':');
+    if (sep <= 0) continue;
+    const username = item.slice(0, sep).trim();
+    const hash = item.slice(sep + 1).trim().toLowerCase();
+    if (!username || !HASH_HEX_64_RE.test(hash)) continue;
+    map.set(username, hash);
+  }
+  return map;
+}
+
+const ADMIN_USERS = parseAdminCredentials(ADMIN_CREDENTIALS);
+if (ADMIN_USERS.size === 0 && ADMIN_PASSWORD_SHA256 && HASH_HEX_64_RE.test(ADMIN_PASSWORD_SHA256)) {
+  ADMIN_USERS.set(ADMIN_USERNAME, ADMIN_PASSWORD_SHA256);
+}
+const ADMIN_DEFAULT_USERNAME = ADMIN_USERS.keys().next().value || ADMIN_USERNAME;
 
 function usePasswordLogin() {
-  return Boolean(ADMIN_PASSWORD_SHA256);
+  return ADMIN_USERS.size > 0;
 }
 
 function timingSafeHashEqualHex(hexA, hexB) {
@@ -271,13 +296,15 @@ function requireAdmin(req, res, next) {
 app.get('/api/admin/config', (_req, res) => {
   res.json({
     loginMode: usePasswordLogin() ? 'password' : 'token',
-    defaultUsername: ADMIN_USERNAME,
+    defaultUsername: ADMIN_DEFAULT_USERNAME,
   });
 });
 
 app.post('/api/admin/login', (req, res) => {
   if (!usePasswordLogin()) {
-    return res.status(400).json({ mensagem: 'Login por senha não está ativo (defina ADMIN_PASSWORD_SHA256).' });
+    return res
+      .status(400)
+      .json({ mensagem: 'Login por senha não está ativo (defina ADMIN_CREDENTIALS ou ADMIN_PASSWORD_SHA256).' });
   }
   if (!ADMIN_SECRET) {
     return res.status(503).json({ mensagem: 'ADMIN_SECRET é obrigatório para criar a sessão.' });
@@ -285,9 +312,8 @@ app.post('/api/admin/login', (req, res) => {
   const username = String(req.body?.username || '').trim();
   const password = String(req.body?.password ?? '');
   const hash = crypto.createHash('sha256').update(password, 'utf8').digest('hex');
-  const okUser = username === ADMIN_USERNAME;
-  const okPass = timingSafeHashEqualHex(hash, ADMIN_PASSWORD_SHA256);
-  if (!okUser || !okPass) {
+  const hashEsperado = ADMIN_USERS.get(username);
+  if (!hashEsperado || !timingSafeHashEqualHex(hash, hashEsperado)) {
     return res.status(401).json({ mensagem: 'Utilizador ou senha incorretos.' });
   }
   res.json({ token: signAdminJwt() });
