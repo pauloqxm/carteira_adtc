@@ -932,6 +932,8 @@ app.post('/api/solicitacao-novo-membro', rateLimitSolicitacao, upload.single('fo
     .from('membros')
     .select('id')
     .eq('cpf', cpfDigits)
+    .order('created_at', { ascending: false })
+    .limit(1)
     .maybeSingle();
   if (errCpf) {
     console.error(errCpf);

@@ -24,12 +24,15 @@ export function getSupabase() {
  */
 export async function buscarMembroPorCpf(cpf11digitos) {
   const sb = getSupabase();
+  // Vários registros com o mesmo CPF: maybeSingle() falha; usa o mais recente (created_at).
   const { data, error } = await sb
     .from('membros')
     .select(
-      'id, cod_membro, nome_completo, cpf, data_nasc, data_batismo, cargo, sexo',
+      'id, cod_membro, nome_completo, cpf, data_nasc, data_batismo, cargo, sexo, created_at',
     )
     .eq('cpf', cpf11digitos)
+    .order('created_at', { ascending: false })
+    .limit(1)
     .maybeSingle();
 
   if (error) throw error;
