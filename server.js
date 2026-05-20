@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import ws from 'ws';
 import { spawnSync } from 'child_process';
 import fs from 'fs';
 import os from 'os';
@@ -166,6 +167,7 @@ const supabaseAdmin =
   SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
     ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
         auth: { persistSession: false, autoRefreshToken: false },
+        realtime: { transport: ws },
       })
     : null;
 
