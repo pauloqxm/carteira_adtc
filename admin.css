@@ -117,6 +117,24 @@
   gap: 0.5rem;
 }
 
+.admin-th-sel {
+  width: 2.5rem;
+  text-align: center;
+}
+
+.admin-chk {
+  width: 1.05rem;
+  height: 1.05rem;
+  cursor: pointer;
+  accent-color: var(--cor-prim);
+}
+
+.admin-selecao-contagem {
+  font-size: 0.85rem;
+  color: var(--cor-texto-mudo);
+  align-self: center;
+}
+
 .admin-toolbar select {
   padding: 0.45rem 0.65rem;
   border-radius: 8px;

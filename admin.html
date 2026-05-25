@@ -81,6 +81,14 @@
             </select>
           </label>
           <button type="button" id="btn-atualizar" class="btn btn--secundario btn--mini">Atualizar lista</button>
+          <button type="button" id="btn-selecionar-aprovadas" class="btn btn--secundario btn--mini">
+            Selecionar aprovadas
+          </button>
+          <button type="button" id="btn-limpar-selecao" class="btn btn--fantasma btn--mini">Limpar seleção</button>
+          <button type="button" id="btn-baixar-pdfs-lote" class="btn btn--primario btn--mini" disabled>
+            Descarregar PDFs (ZIP)
+          </button>
+          <span id="selecao-contagem" class="admin-selecao-contagem" hidden></span>
           <button type="button" id="btn-sair" class="btn btn--fantasma btn--mini">Sair da sessão</button>
         </div>
         <p id="lista-msg" class="admin-msg" hidden></p>
@@ -88,6 +96,15 @@
           <table class="admin-table">
             <thead>
               <tr>
+                <th class="admin-th-sel">
+                  <input
+                    type="checkbox"
+                    id="chk-selecionar-todos"
+                    class="admin-chk"
+                    title="Selecionar todos visíveis"
+                    aria-label="Selecionar todos"
+                  />
+                </th>
                 <th>Foto</th>
                 <th>Protocolo</th>
                 <th>Membro</th>

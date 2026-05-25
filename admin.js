@@ -1,8 +1,12 @@
 import { validarCpf, apenasDigitosCpf, formatarCpfMascara } from './validacao.js';
+import JSZip from 'https://esm.sh/jszip@3.10.1';
 
 const STORAGE_KEY = 'carteira_admin_token';
+const MAX_PDFS_LOTE = 40;
 
 let loginMode = 'token';
+/** Última lista carregada (para seleção em lote). */
+let listaSolicitacoesAtual = [];
 
 /** Cache do último PDF gerado `{ chave, blob, fname }` (evita gerar duas vezes ao visualizar e descarregar). */
 let carteiraPdfCache = null;
@@ -123,16 +127,61 @@ function mostrarPainel() {
   setSairVisivel(true);
 }
 
+function atualizarUiSelecao() {
+  const checks = [...document.querySelectorAll('.admin-chk-linha')];
+  const n = checks.filter((c) => c.checked).length;
+  const cont = el('selecao-contagem');
+  const btnLote = el('btn-baixar-pdfs-lote');
+  if (cont) {
+    if (n > 0) {
+      cont.textContent = `${n} selecionada(s)`;
+      cont.hidden = false;
+    } else {
+      cont.hidden = true;
+      cont.textContent = '';
+    }
+  }
+  if (btnLote) btnLote.disabled = n === 0;
+  const chkTodos = el('chk-selecionar-todos');
+  if (chkTodos && checks.length) {
+    chkTodos.indeterminate = n > 0 && n < checks.length;
+    chkTodos.checked = n === checks.length;
+  } else if (chkTodos) {
+    chkTodos.indeterminate = false;
+    chkTodos.checked = false;
+  }
+}
+
 function renderTabela(itens) {
+  listaSolicitacoesAtual = itens || [];
   const tbody = el('tbody-solicitacoes');
   tbody.innerHTML = '';
+  const chkTodos = el('chk-selecionar-todos');
+  if (chkTodos) {
+    chkTodos.checked = false;
+    chkTodos.indeterminate = false;
+  }
   if (!itens?.length) {
-    tbody.innerHTML = '<tr><td colspan="7">Nenhum registro.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8">Nenhum registro.</td></tr>';
+    atualizarUiSelecao();
     return;
   }
   for (const row of itens) {
     const m = row.membros || {};
     const tr = document.createElement('tr');
+    tr.dataset.solicitacaoId = row.id || '';
+
+    const tdSel = document.createElement('td');
+    tdSel.className = 'admin-th-sel';
+    const chk = document.createElement('input');
+    chk.type = 'checkbox';
+    chk.className = 'admin-chk admin-chk-linha';
+    chk.dataset.solicitacaoId = row.id || '';
+    chk.setAttribute('aria-label', `Selecionar ${row.protocolo || 'solicitação'}`);
+    chk.addEventListener('change', atualizarUiSelecao);
+    tdSel.appendChild(chk);
+    tr.appendChild(tdSel);
+
     const u = urlFoto(row.foto_url);
     const fotoCell = document.createElement('td');
     if (u) {
@@ -190,6 +239,7 @@ function renderTabela(itens) {
 
     tbody.appendChild(tr);
   }
+  atualizarUiSelecao();
 }
 
 function acoesLinha() {
@@ -206,7 +256,7 @@ async function carregarLista() {
   const msg = el('lista-msg');
   msg.hidden = true;
   const tbody = el('tbody-solicitacoes');
-  tbody.innerHTML = '<tr><td colspan="7">Carregando…</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="8">Carregando…</td></tr>';
   try {
     const { itens } = await fetchLista();
     renderTabela(itens);
@@ -416,17 +466,12 @@ function parseFilenameContentDisposition(header) {
   return 'carteira.pdf';
 }
 
-async function obterBlobCarteiraGerada() {
-  const sid = el('carteira-solicitacao-id').value.trim();
-  const prot = el('carteira-protocolo').value.trim();
+async function fetchBlobCarteiraPdf({ solicitacaoId = '', protocolo = '' } = {}) {
+  const sid = String(solicitacaoId || '').trim();
+  const prot = String(protocolo || '').trim();
   if (!sid && !prot) {
-    throw new Error('Indique o protocolo ou use o botão Carteira numa linha da tabela.');
+    throw new Error('Indique o protocolo ou o ID da solicitação.');
   }
-  const chave = chaveCarteiraPdf();
-  if (carteiraPdfCache && carteiraPdfCache.chave === chave) {
-    return carteiraPdfCache;
-  }
-
   const body = sid ? { solicitacao_id: sid } : { protocolo: prot };
   const token = getToken();
   const res = await fetch('/api/admin/gerar-carteira', {
@@ -444,8 +489,156 @@ async function obterBlobCarteiraGerada() {
   const blob = await res.blob();
   const cd = res.headers.get('Content-Disposition');
   const fname = parseFilenameContentDisposition(cd);
-  carteiraPdfCache = { chave, blob, fname };
+  return { blob, fname };
+}
+
+async function obterBlobCarteiraGerada() {
+  const sid = el('carteira-solicitacao-id').value.trim();
+  const prot = el('carteira-protocolo').value.trim();
+  if (!sid && !prot) {
+    throw new Error('Indique o protocolo ou use o botão Carteira numa linha da tabela.');
+  }
+  const chave = chaveCarteiraPdf();
+  if (carteiraPdfCache && carteiraPdfCache.chave === chave) {
+    return carteiraPdfCache;
+  }
+  const out = await fetchBlobCarteiraPdf({ solicitacaoId: sid, protocolo: prot });
+  carteiraPdfCache = { chave, ...out };
   return carteiraPdfCache;
+}
+
+function linhasSelecionadas() {
+  const ids = new Set(
+    [...document.querySelectorAll('.admin-chk-linha:checked')]
+      .map((c) => c.dataset.solicitacaoId)
+      .filter(Boolean),
+  );
+  return listaSolicitacoesAtual.filter((r) => r.id && ids.has(r.id));
+}
+
+function nomePdfUnicoNoZip(fname, protocolo, usados) {
+  let nome = fname || 'carteira.pdf';
+  if (!usados.has(nome)) {
+    usados.add(nome);
+    return nome;
+  }
+  const prot = String(protocolo || 'solicitacao').replace(/[/\\:*?|"]/g, '-');
+  const ext = nome.toLowerCase().endsWith('.pdf') ? '' : '.pdf';
+  const base = nome.replace(/\.pdf$/i, '');
+  let tentativa = `${prot} - ${base}.pdf`;
+  let i = 2;
+  while (usados.has(tentativa)) {
+    tentativa = `${prot} - ${base} (${i}).pdf`;
+    i += 1;
+  }
+  usados.add(tentativa);
+  return tentativa;
+}
+
+async function descarregarCarteirasLote() {
+  const selecionadas = linhasSelecionadas();
+  const msg = el('lista-msg');
+  if (!selecionadas.length) {
+    if (msg) {
+      msg.textContent = 'Selecione pelo menos uma solicitação na tabela.';
+      msg.hidden = false;
+    }
+    return;
+  }
+  if (selecionadas.length > MAX_PDFS_LOTE) {
+    if (msg) {
+      msg.textContent = `Selecione no máximo ${MAX_PDFS_LOTE} solicitações por vez.`;
+      msg.hidden = false;
+    }
+    return;
+  }
+
+  const btn = el('btn-baixar-pdfs-lote');
+  const erros = [];
+  const usados = new Set();
+  const zip = new JSZip();
+  msg.hidden = true;
+  msg.classList.remove('admin-msg--ok');
+  btn.disabled = true;
+  const textoOriginal = btn.textContent;
+  try {
+    for (let i = 0; i < selecionadas.length; i += 1) {
+      const row = selecionadas[i];
+      btn.textContent = `A gerar ${i + 1}/${selecionadas.length}…`;
+      try {
+        const { blob, fname } = await fetchBlobCarteiraPdf({
+          solicitacaoId: row.id,
+          protocolo: row.protocolo,
+        });
+        const nomeZip = nomePdfUnicoNoZip(fname, row.protocolo, usados);
+        zip.file(nomeZip, blob);
+      } catch (e) {
+        erros.push(`${row.protocolo || row.id}: ${e.message || 'falha'}`);
+      }
+    }
+    const totalOk = usados.size;
+    if (!totalOk) {
+      throw new Error(erros.join('\n') || 'Nenhum PDF foi gerado.');
+    }
+    btn.textContent = 'A compactar ZIP…';
+    const zipBlob = await zip.generateAsync({ type: 'blob' });
+    const stamp = new Date().toISOString().slice(0, 10);
+    const url = URL.createObjectURL(zipBlob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `carteiras-${stamp}.zip`;
+    a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    if (erros.length) {
+      msg.textContent = `${totalOk} PDF(s) no ZIP. Falhas: ${erros.join('; ')}`;
+      msg.classList.add('admin-msg--ok');
+      msg.hidden = false;
+    } else {
+      msg.textContent = `${totalOk} carteira(s) descarregada(s) em ZIP.`;
+      msg.classList.add('admin-msg--ok');
+      msg.hidden = false;
+    }
+  } catch (e) {
+    msg.textContent = e.message || 'Falha ao gerar ZIP.';
+    msg.classList.remove('admin-msg--ok');
+    msg.hidden = false;
+  } finally {
+    btn.textContent = textoOriginal;
+    atualizarUiSelecao();
+  }
+}
+
+function selecionarAprovadas() {
+  document.querySelectorAll('.admin-chk-linha').forEach((chk) => {
+    const id = chk.dataset.solicitacaoId;
+    const row = listaSolicitacoesAtual.find((r) => r.id === id);
+    chk.checked = row?.status_solicitacao === 'aprovada';
+  });
+  atualizarUiSelecao();
+}
+
+function limparSelecao() {
+  document.querySelectorAll('.admin-chk-linha').forEach((c) => {
+    c.checked = false;
+  });
+  const chkTodos = el('chk-selecionar-todos');
+  if (chkTodos) {
+    chkTodos.checked = false;
+    chkTodos.indeterminate = false;
+  }
+  atualizarUiSelecao();
+}
+
+function alternarSelecionarTodos() {
+  const chkTodos = el('chk-selecionar-todos');
+  const marcar = chkTodos?.checked;
+  document.querySelectorAll('.admin-chk-linha').forEach((c) => {
+    c.checked = marcar;
+  });
+  atualizarUiSelecao();
 }
 
 async function visualizarCarteiraPdf() {
@@ -588,6 +781,10 @@ async function init() {
 
   el('btn-atualizar').addEventListener('click', () => carregarLista());
   el('filtro-status').addEventListener('change', () => carregarLista());
+  el('btn-selecionar-aprovadas')?.addEventListener('click', selecionarAprovadas);
+  el('btn-limpar-selecao')?.addEventListener('click', limparSelecao);
+  el('btn-baixar-pdfs-lote')?.addEventListener('click', () => descarregarCarteirasLote());
+  el('chk-selecionar-todos')?.addEventListener('change', alternarSelecionarTodos);
 
   document.querySelectorAll('.admin-tab').forEach((btn) => {
     btn.addEventListener('click', () => switchTab(btn.dataset.tab));
