@@ -33,6 +33,64 @@
   margin-bottom: 1rem;
 }
 
+.admin-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.admin-kpi {
+  border: 1px solid var(--cor-borda);
+  border-radius: var(--raio);
+  background: var(--cor-painel-inset);
+  padding: 0.85rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.admin-kpi__label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--cor-texto-mudo);
+}
+
+.admin-kpi__valor {
+  font-size: 1.65rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+  color: var(--cor-texto);
+}
+
+.admin-kpi--pendente {
+  border-color: rgba(144, 202, 249, 0.35);
+}
+
+.admin-kpi--pendente .admin-kpi__valor {
+  color: var(--cor-info);
+}
+
+.admin-kpi--aprovada {
+  border-color: rgba(165, 214, 167, 0.35);
+}
+
+.admin-kpi--aprovada .admin-kpi__valor {
+  color: var(--cor-ok);
+}
+
+.admin-kpi--rejeitada {
+  border-color: rgba(229, 115, 115, 0.35);
+}
+
+.admin-kpi--rejeitada .admin-kpi__valor {
+  color: var(--cor-erro);
+}
+
 .admin-toolbar--carteira {
   margin-top: 0.75rem;
   margin-bottom: 0;
@@ -294,6 +352,18 @@
 }
 
 @media (max-width: 640px) {
+  .admin-kpis {
+    gap: 0.5rem;
+  }
+
+  .admin-kpi {
+    padding: 0.65rem 0.55rem;
+  }
+
+  .admin-kpi__valor {
+    font-size: 1.3rem;
+  }
+
   .admin-table th:nth-child(4),
   .admin-table td:nth-child(4) {
     display: none;

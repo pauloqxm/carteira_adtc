@@ -127,6 +127,19 @@ function mostrarPainel() {
   setSairVisivel(true);
 }
 
+function renderKpis(totais) {
+  const n = (v) => {
+    const num = Number(v);
+    return Number.isFinite(num) ? String(num) : '0';
+  };
+  const pend = el('kpi-pendentes');
+  const apr = el('kpi-aprovadas');
+  const rej = el('kpi-rejeitadas');
+  if (pend) pend.textContent = n(totais?.pendente);
+  if (apr) apr.textContent = n(totais?.aprovada);
+  if (rej) rej.textContent = n(totais?.rejeitada);
+}
+
 function atualizarUiSelecao() {
   const checks = [...document.querySelectorAll('.admin-chk-linha')];
   const n = checks.filter((c) => c.checked).length;
@@ -258,7 +271,8 @@ async function carregarLista() {
   const tbody = el('tbody-solicitacoes');
   tbody.innerHTML = '<tr><td colspan="8">Carregando…</td></tr>';
   try {
-    const { itens } = await fetchLista();
+    const { itens, totais } = await fetchLista();
+    renderKpis(totais);
     renderTabela(itens);
   } catch (e) {
     tbody.innerHTML = '';

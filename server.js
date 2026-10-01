@@ -326,6 +326,11 @@ app.get('/api/admin/solicitacoes', requireAdmin, async (req, res) => {
     return res.status(500).json({ mensagem: 'Servidor sem credencial Supabase.' });
   }
   const statusFilter = req.query.status;
+  const contarStatus = (st) =>
+    supabaseAdmin
+      .from('solicitacoes')
+      .select('id', { count: 'exact', head: true })
+      .eq('status_solicitacao', st);
   let q = supabaseAdmin
     .from('solicitacoes')
     .select('id, protocolo, status_solicitacao, foto_url, created_at, membro_id')
@@ -333,11 +338,22 @@ app.get('/api/admin/solicitacoes', requireAdmin, async (req, res) => {
   if (statusFilter && ['pendente', 'aprovada', 'rejeitada'].includes(String(statusFilter))) {
     q = q.eq('status_solicitacao', statusFilter);
   }
-  const { data: sols, error } = await q;
+  const [listResult, pendenteRes, aprovadaRes, rejeitadaRes] = await Promise.all([
+    q,
+    contarStatus('pendente'),
+    contarStatus('aprovada'),
+    contarStatus('rejeitada'),
+  ]);
+  const { data: sols, error } = listResult;
   if (error) {
     console.error(error);
     return res.status(500).json({ mensagem: 'Erro ao listar solicitações.' });
   }
+  const totais = {
+    pendente: pendenteRes.error ? 0 : pendenteRes.count ?? 0,
+    aprovada: aprovadaRes.error ? 0 : aprovadaRes.count ?? 0,
+    rejeitada: rejeitadaRes.error ? 0 : rejeitadaRes.count ?? 0,
+  };
   const lista = sols || [];
   const ids = [...new Set(lista.map((s) => s.membro_id).filter(Boolean))];
   let map = {};
@@ -358,7 +374,7 @@ app.get('/api/admin/solicitacoes', requireAdmin, async (req, res) => {
     ...s,
     membros: map[s.membro_id] || null,
   }));
-  res.json({ itens });
+  res.json({ itens, totais });
 });
 
 app.patch('/api/admin/solicitacoes/:id', requireAdmin, async (req, res) => {
