@@ -805,6 +805,15 @@ function csvEscapeCell(val) {
   return s;
 }
 
+/** Converte AAAA-MM-DD (ou ISO) para dd/mm/aaaa; vazio permanece vazio. */
+function dataIsoParaBr(val) {
+  if (val == null || val === '') return '';
+  const s = String(val).trim();
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return s;
+  return `${m[3]}/${m[2]}/${m[1]}`;
+}
+
 app.get('/api/admin/membros', requireAdmin, async (req, res) => {
   if (!supabaseAdmin) {
     return res.status(500).json({ mensagem: 'Servidor sem credencial Supabase.' });
@@ -869,9 +878,13 @@ app.get('/api/admin/membros/export', requireAdmin, async (req, res) => {
     'nacionalidade',
     'estado_civil',
   ];
+  const colsDataBr = new Set(['data_nasc', 'data_batismo']);
   const linhas = (data || []).map((row) => {
     const o = {};
-    for (const c of cols) o[c] = row[c] ?? '';
+    for (const c of cols) {
+      const raw = row[c] ?? '';
+      o[c] = colsDataBr.has(c) ? dataIsoParaBr(raw) : raw;
+    }
     return o;
   });
   const stamp = new Date().toISOString().slice(0, 10);
