@@ -671,6 +671,13 @@ button.admin-bars__row:focus-visible {
   outline-offset: 2px;
 }
 
+.campo__input--bloqueado,
+.campo__input[readonly] {
+  opacity: 0.72;
+  cursor: not-allowed;
+  color: var(--cor-texto-mudo);
+}
+
 @media (max-width: 900px) {
   .admin-kpis {
     grid-template-columns: repeat(2, minmax(0, 1fr));

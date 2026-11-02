@@ -17,6 +17,8 @@ let membrosTotal = 0;
 let membrosSort = 'nome_completo';
 let membrosOrder = 'asc';
 const MEMBROS_LIMIT = 50;
+/** Opções para selects da ficha (preenchidas pelos filtros da API). */
+let opcoesFichaMembros = { congregacoes: [], cargos: [], situacoes: [] };
 
 /** Cache do último PDF gerado `{ chave, blob, fname }` (evita gerar duas vezes ao visualizar e descarregar). */
 let carteiraPdfCache = null;
@@ -1174,12 +1176,42 @@ function preencherSelectFiltro(selectEl, valores, placeholderTodos, placeholderV
 async function carregarFiltrosMembros() {
   try {
     const data = await api('/api/admin/membros/filtros');
+    opcoesFichaMembros = {
+      congregacoes: data.congregacoes || [],
+      cargos: data.cargos || [],
+      situacoes: data.situacoes || [],
+    };
     preencherSelectFiltro(el('membros-filtro-cong'), data.congregacoes, 'Todas', 'Sem congregação');
     preencherSelectFiltro(el('membros-filtro-sit'), data.situacoes, 'Todas', 'Sem situação');
     preencherSelectFiltro(el('membros-filtro-cargo'), data.cargos, 'Todos', 'Sem cargo');
   } catch {
     /* filtros opcionais */
   }
+}
+
+/** Preenche um <select> com opções base + extras da API, garantindo o valor atual. */
+function preencherSelectFicha(sel, extras, valorAtual) {
+  if (!sel) return;
+  const atual = String(valorAtual || '').trim();
+  const existentes = new Set(
+    [...sel.options].map((o) => o.value).filter((v) => v !== ''),
+  );
+  for (const v of extras || []) {
+    const t = String(v || '').trim();
+    if (!t || existentes.has(t)) continue;
+    const opt = document.createElement('option');
+    opt.value = t;
+    opt.textContent = t;
+    sel.appendChild(opt);
+    existentes.add(t);
+  }
+  if (atual && !existentes.has(atual)) {
+    const opt = document.createElement('option');
+    opt.value = atual;
+    opt.textContent = atual;
+    sel.appendChild(opt);
+  }
+  sel.value = atual || '';
 }
 
 function paramsFiltroMembros() {
@@ -1422,13 +1454,16 @@ async function abrirFichaMembro(id) {
     const cpfD = apenasDigitosCpf(m.cpf);
     el('ficha-cpf').value = cpfD ? formatarCpfMascara(cpfD) : '';
     el('ficha-telefone').value = m.whatsapp_telefone || '';
-    el('ficha-congregacao').value = m.congregacao || '';
     el('ficha-situacao').value = m.situacao_membro || '';
     el('ficha-data-nasc').value = isoParaInputDate(m.data_nasc);
     el('ficha-data-batismo').value = isoParaInputDate(m.data_batismo);
     el('ficha-nacionalidade').value = m.nacionalidade || '';
-    el('ficha-estado-civil').value = m.estado_civil || '';
-    el('ficha-cargo').value = m.cargo || '';
+    if (!opcoesFichaMembros.congregacoes.length) {
+      await carregarFiltrosMembros();
+    }
+    preencherSelectFicha(el('ficha-congregacao'), opcoesFichaMembros.congregacoes, m.congregacao);
+    preencherSelectFicha(el('ficha-estado-civil'), [], m.estado_civil);
+    preencherSelectFicha(el('ficha-cargo'), opcoesFichaMembros.cargos, m.cargo);
     setSexoSelect(el('ficha-sexo'), m.sexo);
 
     const tbody = el('tbody-ficha-sols');
@@ -1510,16 +1545,8 @@ async function guardarFichaMembro() {
       return;
     }
   }
-  const cod = parseInt(el('ficha-cod').value.trim(), 10);
-  if (!Number.isInteger(cod) || cod < 1) {
-    msg.textContent = 'Código de membro inválido.';
-    msg.hidden = false;
-    return;
-  }
-
   const body = {
     nome_completo: nome,
-    cod_membro: cod,
     cpf: cpfDigits || null,
     whatsapp_telefone: el('ficha-telefone').value.trim() || null,
     congregacao: el('ficha-congregacao').value.trim() || null,

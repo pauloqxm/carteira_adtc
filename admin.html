@@ -380,7 +380,16 @@
           </label>
           <label class="campo">
             <span class="campo__label">Código de membro</span>
-            <input id="ficha-cod" class="campo__input" type="number" min="1" step="1" />
+            <input
+              id="ficha-cod"
+              class="campo__input campo__input--bloqueado"
+              type="number"
+              min="1"
+              step="1"
+              readonly
+              tabindex="-1"
+              title="Código não pode ser alterado"
+            />
           </label>
           <label class="campo">
             <span class="campo__label">CPF</span>
@@ -392,7 +401,9 @@
           </label>
           <label class="campo">
             <span class="campo__label">Congregação</span>
-            <input id="ficha-congregacao" class="campo__input" type="text" />
+            <select id="ficha-congregacao" class="campo__input">
+              <option value="">—</option>
+            </select>
           </label>
           <label class="campo">
             <span class="campo__label">Situação do membro</span>
@@ -418,11 +429,31 @@
           </label>
           <label class="campo">
             <span class="campo__label">Estado civil</span>
-            <input id="ficha-estado-civil" class="campo__input" type="text" />
+            <select id="ficha-estado-civil" class="campo__input">
+              <option value="">—</option>
+              <option value="CASADO">CASADO</option>
+              <option value="SOLTEIRO">SOLTEIRO</option>
+              <option value="DIVORCIADO">DIVORCIADO</option>
+              <option value="VIÚVO">VIÚVO</option>
+              <option value="Casado(a)">Casado(a)</option>
+              <option value="Solteiro(a)">Solteiro(a)</option>
+              <option value="Divorciado(a)">Divorciado(a)</option>
+              <option value="Viúvo(a)">Viúvo(a)</option>
+            </select>
           </label>
           <label class="campo">
             <span class="campo__label">Cargo</span>
-            <input id="ficha-cargo" class="campo__input" type="text" />
+            <select id="ficha-cargo" class="campo__input">
+              <option value="">—</option>
+              <option value="Membro">Membro</option>
+              <option value="MEMBRO">MEMBRO</option>
+              <option value="Auxiliar">Auxiliar</option>
+              <option value="Diácono">Diácono</option>
+              <option value="Presbítero">Presbítero</option>
+              <option value="Evangelista">Evangelista</option>
+              <option value="EVANGELISTA">EVANGELISTA</option>
+              <option value="Regente">Regente</option>
+            </select>
           </label>
           <label class="campo">
             <span class="campo__label">Sexo</span>
