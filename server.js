@@ -331,18 +331,24 @@ app.get('/api/admin/solicitacoes', requireAdmin, async (req, res) => {
       .from('solicitacoes')
       .select('id', { count: 'exact', head: true })
       .eq('status_solicitacao', st);
+  const contarEmitidas = () =>
+    supabaseAdmin
+      .from('solicitacoes')
+      .select('id', { count: 'exact', head: true })
+      .not('emitida_em', 'is', null);
   let q = supabaseAdmin
     .from('solicitacoes')
-    .select('id, protocolo, status_solicitacao, foto_url, created_at, membro_id')
+    .select('id, protocolo, status_solicitacao, foto_url, created_at, membro_id, emitida_em')
     .order('created_at', { ascending: false });
   if (statusFilter && ['pendente', 'aprovada', 'rejeitada'].includes(String(statusFilter))) {
     q = q.eq('status_solicitacao', statusFilter);
   }
-  const [listResult, pendenteRes, aprovadaRes, rejeitadaRes] = await Promise.all([
+  const [listResult, pendenteRes, aprovadaRes, rejeitadaRes, emitidaRes] = await Promise.all([
     q,
     contarStatus('pendente'),
     contarStatus('aprovada'),
     contarStatus('rejeitada'),
+    contarEmitidas(),
   ]);
   const { data: sols, error } = listResult;
   if (error) {
@@ -353,28 +359,155 @@ app.get('/api/admin/solicitacoes', requireAdmin, async (req, res) => {
     pendente: pendenteRes.error ? 0 : pendenteRes.count ?? 0,
     aprovada: aprovadaRes.error ? 0 : aprovadaRes.count ?? 0,
     rejeitada: rejeitadaRes.error ? 0 : rejeitadaRes.count ?? 0,
+    emitida: emitidaRes.error ? 0 : emitidaRes.count ?? 0,
   };
   const lista = sols || [];
-  const ids = [...new Set(lista.map((s) => s.membro_id).filter(Boolean))];
-  let map = {};
-  if (ids.length) {
-    const { data: mems, error: e2 } = await supabaseAdmin
-      .from('membros')
-      .select(
-        'id, nome_completo, cod_membro, cpf, data_nasc, nacionalidade, estado_civil, data_batismo, cargo, sexo',
-      )
-      .in('id', ids);
-    if (e2) {
-      console.error(e2);
-      return res.status(500).json({ mensagem: 'Erro ao carregar dados dos membros.' });
-    }
-    map = Object.fromEntries((mems || []).map((m) => [m.id, m]));
+  try {
+    const map = await carregarMembrosPorIds([...new Set(lista.map((s) => s.membro_id).filter(Boolean))]);
+    const itens = lista.map((s) => ({
+      ...s,
+      membros: map[s.membro_id] || null,
+    }));
+    res.json({ itens, totais });
+  } catch (e2) {
+    console.error(e2);
+    return res.status(500).json({ mensagem: 'Erro ao carregar dados dos membros.' });
   }
-  const itens = lista.map((s) => ({
-    ...s,
-    membros: map[s.membro_id] || null,
-  }));
-  res.json({ itens, totais });
+});
+
+async function carregarMembrosPorIds(ids) {
+  if (!ids.length) return {};
+  const { data: mems, error } = await supabaseAdmin
+    .from('membros')
+    .select(
+      'id, nome_completo, cod_membro, cpf, data_nasc, nacionalidade, estado_civil, data_batismo, cargo, sexo',
+    )
+    .in('id', ids);
+  if (error) throw error;
+  return Object.fromEntries((mems || []).map((m) => [m.id, m]));
+}
+
+app.get('/api/admin/carteiras-emitidas', requireAdmin, async (req, res) => {
+  if (!supabaseAdmin) {
+    return res.status(500).json({ mensagem: 'Servidor sem credencial Supabase.' });
+  }
+  const { data: sols, error } = await supabaseAdmin
+    .from('solicitacoes')
+    .select('id, protocolo, status_solicitacao, foto_url, created_at, membro_id, emitida_em, congregacao_nome')
+    .not('emitida_em', 'is', null)
+    .order('emitida_em', { ascending: false });
+  if (error) {
+    console.error(error);
+    return res.status(500).json({ mensagem: 'Erro ao listar carteiras emitidas.' });
+  }
+  const lista = sols || [];
+  try {
+    const map = await carregarMembrosPorIds([...new Set(lista.map((s) => s.membro_id).filter(Boolean))]);
+    const itens = lista.map((s) => ({
+      ...s,
+      membros: map[s.membro_id] || null,
+    }));
+    res.json({ itens, total: itens.length });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ mensagem: 'Erro ao carregar dados dos membros.' });
+  }
+});
+
+app.post('/api/admin/carteiras-emitidas', requireAdmin, async (req, res) => {
+  if (!supabaseAdmin) {
+    return res.status(500).json({ mensagem: 'Servidor sem credencial Supabase.' });
+  }
+  const idsRaw = Array.isArray(req.body?.ids) ? req.body.ids : [];
+  const ids = [...new Set(idsRaw.map((id) => String(id || '').trim()).filter((id) => UUID_RE.test(id)))];
+  if (!ids.length) {
+    return res.status(400).json({ mensagem: 'Selecione pelo menos uma solicitação válida.' });
+  }
+  if (ids.length > 80) {
+    return res.status(400).json({ mensagem: 'Registe no máximo 80 emissões de cada vez.' });
+  }
+
+  const { data: sols, error } = await supabaseAdmin
+    .from('solicitacoes')
+    .select('id, protocolo, status_solicitacao, emitida_em')
+    .in('id', ids);
+  if (error) {
+    console.error(error);
+    return res.status(500).json({ mensagem: 'Erro ao validar solicitações.' });
+  }
+
+  const porId = new Map((sols || []).map((s) => [s.id, s]));
+  const elegiveis = [];
+  const ignoradas = [];
+  for (const id of ids) {
+    const s = porId.get(id);
+    if (!s) {
+      ignoradas.push({ id, motivo: 'não encontrada' });
+      continue;
+    }
+    if (s.status_solicitacao !== 'aprovada') {
+      ignoradas.push({ id, protocolo: s.protocolo, motivo: 'não está aprovada' });
+      continue;
+    }
+    if (s.emitida_em) {
+      ignoradas.push({ id, protocolo: s.protocolo, motivo: 'já emitida' });
+      continue;
+    }
+    elegiveis.push(s.id);
+  }
+
+  if (!elegiveis.length) {
+    return res.status(400).json({
+      mensagem: 'Nenhuma solicitação aprovada pendente de emissão nas selecionadas.',
+      registadas: 0,
+      ignoradas,
+    });
+  }
+
+  const agora = new Date().toISOString();
+  const { data: atualizados, error: eUp } = await supabaseAdmin
+    .from('solicitacoes')
+    .update({ emitida_em: agora })
+    .in('id', elegiveis)
+    .is('emitida_em', null)
+    .eq('status_solicitacao', 'aprovada')
+    .select('id, protocolo, emitida_em');
+  if (eUp) {
+    console.error(eUp);
+    return res.status(500).json({ mensagem: 'Erro ao registar emissões.' });
+  }
+
+  res.json({
+    ok: true,
+    registadas: (atualizados || []).length,
+    itens: atualizados || [],
+    ignoradas,
+  });
+});
+
+app.delete('/api/admin/carteiras-emitidas/:id', requireAdmin, async (req, res) => {
+  if (!supabaseAdmin) {
+    return res.status(500).json({ mensagem: 'Servidor sem credencial Supabase.' });
+  }
+  const { id } = req.params;
+  if (!UUID_RE.test(id)) {
+    return res.status(400).json({ mensagem: 'ID inválido.' });
+  }
+  const { data, error } = await supabaseAdmin
+    .from('solicitacoes')
+    .update({ emitida_em: null })
+    .eq('id', id)
+    .not('emitida_em', 'is', null)
+    .select('id, protocolo')
+    .maybeSingle();
+  if (error) {
+    console.error(error);
+    return res.status(500).json({ mensagem: 'Erro ao remover registo de emissão.' });
+  }
+  if (!data) {
+    return res.status(404).json({ mensagem: 'Emissão não encontrada.' });
+  }
+  res.json({ ok: true, solicitacao: data });
 });
 
 app.patch('/api/admin/solicitacoes/:id', requireAdmin, async (req, res) => {

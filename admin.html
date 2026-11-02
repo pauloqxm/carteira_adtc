@@ -66,6 +66,7 @@
     <div id="sec-painel" hidden>
       <nav class="admin-tabs" id="admin-tabs" aria-label="Secções do painel">
         <button type="button" class="admin-tab admin-tab--active" data-tab="solicitacoes">Solicitações</button>
+        <button type="button" class="admin-tab" data-tab="emitidas">Carteiras emitidas</button>
         <button type="button" class="admin-tab" data-tab="carteira">Gerar carteira</button>
       </nav>
 
@@ -83,6 +84,10 @@
             <span class="admin-kpi__label">Rejeitadas</span>
             <strong id="kpi-rejeitadas" class="admin-kpi__valor">0</strong>
           </article>
+          <article class="admin-kpi admin-kpi--emitida">
+            <span class="admin-kpi__label">Emitidas</span>
+            <strong id="kpi-emitidas" class="admin-kpi__valor">0</strong>
+          </article>
         </div>
         <div class="admin-toolbar">
           <label>
@@ -99,6 +104,9 @@
             Selecionar aprovadas
           </button>
           <button type="button" id="btn-limpar-selecao" class="btn btn--fantasma btn--mini">Limpar seleção</button>
+          <button type="button" id="btn-registrar-emissao" class="btn btn--secundario btn--mini" disabled>
+            Registar emissão
+          </button>
           <button type="button" id="btn-baixar-pdfs-lote" class="btn btn--primario btn--mini" disabled>
             Descarregar PDFs (ZIP)
           </button>
@@ -129,6 +137,41 @@
               </tr>
             </thead>
             <tbody id="tbody-solicitacoes"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="tab-emitidas" class="card admin-tab-panel" hidden>
+        <h2 class="card__titulo">Carteiras emitidas</h2>
+        <p class="card__texto">
+          Controlo das emissões registadas a partir das solicitações aprovadas. Use
+          <strong>Registar emissão</strong> na aba Solicitações após selecionar as aprovadas.
+        </p>
+        <div class="admin-kpis admin-kpis--uma" aria-label="Total de emissões">
+          <article class="admin-kpi admin-kpi--emitida">
+            <span class="admin-kpi__label">Total emitidas</span>
+            <strong id="kpi-emitidas-pagina" class="admin-kpi__valor">0</strong>
+          </article>
+        </div>
+        <div class="admin-toolbar">
+          <button type="button" id="btn-atualizar-emitidas" class="btn btn--secundario btn--mini">
+            Atualizar lista
+          </button>
+        </div>
+        <p id="emitidas-msg" class="admin-msg" hidden></p>
+        <div class="admin-table-wrap">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>Foto</th>
+                <th>Protocolo</th>
+                <th>Membro</th>
+                <th>CPF</th>
+                <th>Emitida em</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody id="tbody-emitidas"></tbody>
           </table>
         </div>
       </section>

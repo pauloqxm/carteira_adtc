@@ -35,9 +35,13 @@
 
 .admin-kpis {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0.75rem;
   margin-bottom: 1rem;
+}
+
+.admin-kpis--uma {
+  grid-template-columns: minmax(0, 16rem);
 }
 
 .admin-kpi {
@@ -89,6 +93,20 @@
 
 .admin-kpi--rejeitada .admin-kpi__valor {
   color: var(--cor-erro);
+}
+
+.admin-kpi--emitida {
+  border-color: rgba(0, 138, 209, 0.4);
+}
+
+.admin-kpi--emitida .admin-kpi__valor {
+  color: var(--cor-prim-hover);
+}
+
+.badge--emitida {
+  background: rgba(0, 138, 209, 0.2);
+  color: var(--cor-prim-hover);
+  margin-left: 0.35rem;
 }
 
 .admin-toolbar--carteira {
@@ -349,6 +367,12 @@
   gap: 0.6rem;
   margin-top: 1.1rem;
   justify-content: flex-end;
+}
+
+@media (max-width: 900px) {
+  .admin-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 640px) {

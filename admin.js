@@ -7,6 +7,8 @@ const MAX_PDFS_LOTE = 40;
 let loginMode = 'token';
 /** Última lista carregada (para seleção em lote). */
 let listaSolicitacoesAtual = [];
+/** Última lista de carteiras emitidas. */
+let listaEmitidasAtual = [];
 
 /** Cache do último PDF gerado `{ chave, blob, fname }` (evita gerar duas vezes ao visualizar e descarregar). */
 let carteiraPdfCache = null;
@@ -135,9 +137,11 @@ function renderKpis(totais) {
   const pend = el('kpi-pendentes');
   const apr = el('kpi-aprovadas');
   const rej = el('kpi-rejeitadas');
+  const emi = el('kpi-emitidas');
   if (pend) pend.textContent = n(totais?.pendente);
   if (apr) apr.textContent = n(totais?.aprovada);
   if (rej) rej.textContent = n(totais?.rejeitada);
+  if (emi) emi.textContent = n(totais?.emitida);
 }
 
 function atualizarUiSelecao() {
@@ -155,6 +159,13 @@ function atualizarUiSelecao() {
     }
   }
   if (btnLote) btnLote.disabled = n === 0;
+  const btnEmissao = el('btn-registrar-emissao');
+  if (btnEmissao) {
+    const elegiveis = linhasSelecionadas().filter(
+      (r) => r.status_solicitacao === 'aprovada' && !r.emitida_em,
+    ).length;
+    btnEmissao.disabled = elegiveis === 0;
+  }
   const chkTodos = el('chk-selecionar-todos');
   if (chkTodos && checks.length) {
     chkTodos.indeterminate = n > 0 && n < checks.length;
@@ -236,6 +247,13 @@ function renderTabela(itens) {
     sp.className = badgeClass(row.status_solicitacao);
     sp.textContent = row.status_solicitacao || '';
     tdSt.appendChild(sp);
+    if (row.emitida_em) {
+      const em = document.createElement('span');
+      em.className = 'badge badge--emitida';
+      em.textContent = 'emitida';
+      em.title = `Emitida em ${formatarData(row.emitida_em)}`;
+      tdSt.appendChild(em);
+    }
     tr.appendChild(tdSt);
 
     const tdAc = document.createElement('td');
@@ -291,7 +309,180 @@ function switchTab(nome) {
     b.classList.toggle('admin-tab--active', b.dataset.tab === nome);
   });
   el('tab-solicitacoes').hidden = nome !== 'solicitacoes';
+  el('tab-emitidas').hidden = nome !== 'emitidas';
   el('tab-carteira').hidden = nome !== 'carteira';
+  if (nome === 'emitidas') {
+    carregarEmitidas();
+  }
+}
+
+function renderTabelaEmitidas(itens) {
+  listaEmitidasAtual = itens || [];
+  const tbody = el('tbody-emitidas');
+  const kpi = el('kpi-emitidas-pagina');
+  if (kpi) kpi.textContent = String(listaEmitidasAtual.length);
+  tbody.innerHTML = '';
+  if (!itens?.length) {
+    tbody.innerHTML = '<tr><td colspan="6">Nenhuma carteira emitida registada.</td></tr>';
+    return;
+  }
+  for (const row of itens) {
+    const m = row.membros || {};
+    const tr = document.createElement('tr');
+
+    const u = urlFoto(row.foto_url);
+    const fotoCell = document.createElement('td');
+    if (u) {
+      const a = document.createElement('a');
+      a.href = u;
+      a.target = '_blank';
+      a.rel = 'noopener';
+      const img = document.createElement('img');
+      img.className = 'admin-foto';
+      img.src = u;
+      img.alt = '';
+      img.loading = 'lazy';
+      a.appendChild(img);
+      fotoCell.appendChild(a);
+    } else {
+      fotoCell.textContent = '—';
+    }
+    tr.appendChild(fotoCell);
+
+    const tdProt = document.createElement('td');
+    tdProt.innerHTML = `<strong>${escapeHtml(row.protocolo || '')}</strong>`;
+    tr.appendChild(tdProt);
+
+    const tdNome = document.createElement('td');
+    tdNome.innerHTML = `${escapeHtml(m.nome_completo || '—')} <small style="color:var(--cor-texto-mudo)">#${escapeHtml(String(m.cod_membro ?? '—'))}</small>`;
+    tr.appendChild(tdNome);
+
+    const tdCpf = document.createElement('td');
+    tdCpf.className = 'admin-cpf';
+    tdCpf.textContent = formatarCpfExibicao(m.cpf);
+    tr.appendChild(tdCpf);
+
+    const tdEm = document.createElement('td');
+    tdEm.textContent = formatarData(row.emitida_em);
+    tr.appendChild(tdEm);
+
+    const tdAc = document.createElement('td');
+    tdAc.className = 'admin-acoes';
+    const btnCart = document.createElement('button');
+    btnCart.type = 'button';
+    btnCart.className = 'btn btn--mini btn--secundario';
+    btnCart.textContent = 'Carteira';
+    btnCart.addEventListener('click', () => {
+      switchTab('carteira');
+      invalidarCacheCarteiraPdf();
+      el('carteira-protocolo').value = row.protocolo || '';
+      el('carteira-solicitacao-id').value = row.id || '';
+      el('carteira-msg').hidden = true;
+    });
+    tdAc.appendChild(btnCart);
+
+    const btnDesfazer = document.createElement('button');
+    btnDesfazer.type = 'button';
+    btnDesfazer.className = 'btn btn--mini btn--fantasma';
+    btnDesfazer.textContent = 'Desfazer emissão';
+    btnDesfazer.addEventListener('click', () => desfazerEmissao(row));
+    tdAc.appendChild(btnDesfazer);
+
+    tr.appendChild(tdAc);
+    tbody.appendChild(tr);
+  }
+}
+
+async function carregarEmitidas() {
+  const msg = el('emitidas-msg');
+  const tbody = el('tbody-emitidas');
+  if (msg) {
+    msg.hidden = true;
+    msg.classList.remove('admin-msg--ok');
+  }
+  if (tbody) tbody.innerHTML = '<tr><td colspan="6">Carregando…</td></tr>';
+  try {
+    const { itens } = await api('/api/admin/carteiras-emitidas');
+    renderTabelaEmitidas(itens);
+  } catch (e) {
+    if (tbody) tbody.innerHTML = '';
+    if (e.status === 401 || String(e.message).includes('Não autorizado')) {
+      setToken('');
+      mostrarLogin('Sessão expirada ou acesso inválido.', loginMode === 'password' ? 'pass' : 'token');
+      return;
+    }
+    if (msg) {
+      msg.textContent = e.message || 'Erro ao carregar emissões.';
+      msg.hidden = false;
+    }
+  }
+}
+
+async function registrarEmissaoSelecionadas() {
+  const selecionadas = linhasSelecionadas().filter(
+    (r) => r.status_solicitacao === 'aprovada' && !r.emitida_em,
+  );
+  const msg = el('lista-msg');
+  if (!selecionadas.length) {
+    if (msg) {
+      msg.textContent = 'Selecione solicitações aprovadas que ainda não foram emitidas.';
+      msg.classList.remove('admin-msg--ok');
+      msg.hidden = false;
+    }
+    return;
+  }
+  if (
+    !confirm(
+      `Registar emissão de ${selecionadas.length} carteira(s) aprovada(s)? Elas aparecerão em Carteiras emitidas.`,
+    )
+  ) {
+    return;
+  }
+
+  const btn = el('btn-registrar-emissao');
+  if (btn) btn.disabled = true;
+  try {
+    const out = await api('/api/admin/carteiras-emitidas', {
+      method: 'POST',
+      body: JSON.stringify({ ids: selecionadas.map((r) => r.id) }),
+    });
+    if (msg) {
+      const ign = out.ignoradas?.length ? ` (${out.ignoradas.length} ignorada(s))` : '';
+      msg.textContent = `${out.registadas || 0} emissão(ões) registada(s)${ign}.`;
+      msg.classList.add('admin-msg--ok');
+      msg.hidden = false;
+    }
+    await carregarLista();
+  } catch (e) {
+    if (msg) {
+      msg.textContent = e.message || 'Falha ao registar emissão.';
+      msg.classList.remove('admin-msg--ok');
+      msg.hidden = false;
+    }
+    atualizarUiSelecao();
+  }
+}
+
+async function desfazerEmissao(row) {
+  if (!row?.id) return;
+  if (!confirm(`Remover o registo de emissão de ${row.protocolo || 'esta carteira'}?`)) return;
+  const msg = el('emitidas-msg');
+  try {
+    await api(`/api/admin/carteiras-emitidas/${row.id}`, { method: 'DELETE' });
+    if (msg) {
+      msg.textContent = 'Registo de emissão removido.';
+      msg.classList.add('admin-msg--ok');
+      msg.hidden = false;
+    }
+    await carregarEmitidas();
+    await carregarLista();
+  } catch (e) {
+    if (msg) {
+      msg.textContent = e.message || 'Falha ao desfazer emissão.';
+      msg.classList.remove('admin-msg--ok');
+      msg.hidden = false;
+    }
+  }
 }
 
 function isoParaInputDate(iso) {
@@ -629,7 +820,7 @@ function selecionarAprovadas() {
   document.querySelectorAll('.admin-chk-linha').forEach((chk) => {
     const id = chk.dataset.solicitacaoId;
     const row = listaSolicitacoesAtual.find((r) => r.id === id);
-    chk.checked = row?.status_solicitacao === 'aprovada';
+    chk.checked = row?.status_solicitacao === 'aprovada' && !row.emitida_em;
   });
   atualizarUiSelecao();
 }
@@ -758,8 +949,9 @@ async function init() {
         skipAuth: true,
       });
       setToken(token);
-      const { itens } = await fetchLista();
+      const { itens, totais } = await fetchLista();
       mostrarPainel();
+      renderKpis(totais);
       renderTabela(itens);
     } catch (e) {
       setToken('');
@@ -775,8 +967,9 @@ async function init() {
     }
     setToken(t);
     try {
-      const { itens } = await fetchLista();
+      const { itens, totais } = await fetchLista();
       mostrarPainel();
+      renderKpis(totais);
       renderTabela(itens);
     } catch (e) {
       setToken('');
@@ -797,8 +990,10 @@ async function init() {
   el('filtro-status').addEventListener('change', () => carregarLista());
   el('btn-selecionar-aprovadas')?.addEventListener('click', selecionarAprovadas);
   el('btn-limpar-selecao')?.addEventListener('click', limparSelecao);
+  el('btn-registrar-emissao')?.addEventListener('click', () => registrarEmissaoSelecionadas());
   el('btn-baixar-pdfs-lote')?.addEventListener('click', () => descarregarCarteirasLote());
   el('chk-selecionar-todos')?.addEventListener('change', alternarSelecionarTodos);
+  el('btn-atualizar-emitidas')?.addEventListener('click', () => carregarEmitidas());
 
   document.querySelectorAll('.admin-tab').forEach((btn) => {
     btn.addEventListener('click', () => switchTab(btn.dataset.tab));
