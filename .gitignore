@@ -4,5 +4,6 @@ node_modules/
 *.log
 uploads-temp/
 dados_membros.csv
+BD_ADTC*.csv
 *.tmp
 index_modelo.html

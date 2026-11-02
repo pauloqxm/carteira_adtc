@@ -380,7 +380,7 @@ async function carregarMembrosPorIds(ids) {
   const { data: mems, error } = await supabaseAdmin
     .from('membros')
     .select(
-      'id, nome_completo, cod_membro, cpf, data_nasc, nacionalidade, estado_civil, data_batismo, cargo, sexo, congregacao, situacao_membro',
+      'id, nome_completo, cod_membro, cpf, data_nasc, nacionalidade, estado_civil, data_batismo, cargo, sexo, congregacao, situacao_membro, whatsapp_telefone',
     )
     .in('id', ids);
   if (error) throw error;
@@ -447,6 +447,16 @@ async function contarCarteirasTotais() {
   };
 }
 
+/** Espelha congregação da solicitação no cadastro do membro e marca como atualizado. */
+async function sincronizarMembroComCongregacao(membroId, congregacaoNome) {
+  if (!membroId || !supabaseAdmin) return;
+  const cong = String(congregacaoNome || '').trim();
+  const patch = { situacao_membro: 'ATUALIZADO' };
+  if (cong.length >= 2) patch.congregacao = cong;
+  const { error } = await supabaseAdmin.from('membros').update(patch).eq('id', membroId);
+  if (error) console.error('sincronizarMembroComCongregacao', error);
+}
+
 app.get('/api/admin/carteiras-emitidas', requireAdmin, async (req, res) => {
   if (!supabaseAdmin) {
     return res.status(500).json({ mensagem: 'Servidor sem credencial Supabase.' });
@@ -489,7 +499,7 @@ app.post('/api/admin/carteiras-emitidas', requireAdmin, async (req, res) => {
 
   const { data: sols, error } = await supabaseAdmin
     .from('solicitacoes')
-    .select('id, protocolo, status_solicitacao, emitida_em')
+    .select('id, protocolo, status_solicitacao, emitida_em, membro_id, congregacao_nome')
     .in('id', ids);
   if (error) {
     console.error(error);
@@ -531,11 +541,15 @@ app.post('/api/admin/carteiras-emitidas', requireAdmin, async (req, res) => {
     .in('id', elegiveis)
     .is('emitida_em', null)
     .eq('status_solicitacao', 'aprovada')
-    .select('id, protocolo, emitida_em');
+    .select('id, protocolo, emitida_em, membro_id, congregacao_nome');
   if (eUp) {
     console.error(eUp);
     return res.status(500).json({ mensagem: 'Erro ao registar emissões.' });
   }
+
+  await Promise.all(
+    (atualizados || []).map((s) => sincronizarMembroComCongregacao(s.membro_id, s.congregacao_nome)),
+  );
 
   res.json({
     ok: true,
@@ -586,7 +600,7 @@ app.patch('/api/admin/solicitacoes/:id', requireAdmin, async (req, res) => {
     .from('solicitacoes')
     .update({ status_solicitacao: st })
     .eq('id', id)
-    .select('id, protocolo, status_solicitacao')
+    .select('id, protocolo, status_solicitacao, membro_id, congregacao_nome')
     .maybeSingle();
   if (error) {
     console.error(error);
@@ -594,6 +608,9 @@ app.patch('/api/admin/solicitacoes/:id', requireAdmin, async (req, res) => {
   }
   if (!data) {
     return res.status(404).json({ mensagem: 'Solicitação não encontrada.' });
+  }
+  if (st === 'aprovada') {
+    await sincronizarMembroComCongregacao(data.membro_id, data.congregacao_nome);
   }
   res.json({ ok: true, solicitacao: data });
 });
@@ -669,7 +686,7 @@ function parseOptionalText(val) {
 }
 
 const MEMBROS_LIST_SELECT =
-  'id, cod_membro, nome_completo, cpf, data_nasc, nacionalidade, estado_civil, data_batismo, cargo, sexo, congregacao, situacao_membro, created_at';
+  'id, cod_membro, nome_completo, cpf, data_nasc, nacionalidade, estado_civil, data_batismo, cargo, sexo, congregacao, situacao_membro, whatsapp_telefone, created_at';
 
 app.get('/api/admin/membros/dashboard', requireAdmin, async (req, res) => {
   if (!supabaseAdmin) {
@@ -915,6 +932,10 @@ app.patch('/api/admin/membros/:id', requireAdmin, async (req, res) => {
   }
   if (Object.prototype.hasOwnProperty.call(body, 'situacao_membro')) {
     patch.situacao_membro = parseOptionalText(body.situacao_membro);
+  }
+  if (Object.prototype.hasOwnProperty.call(body, 'whatsapp_telefone')) {
+    const tel = String(body.whatsapp_telefone ?? '').replace(/\D/g, '');
+    patch.whatsapp_telefone = tel.length >= 8 ? tel : null;
   }
   if (Object.prototype.hasOwnProperty.call(body, 'cod_membro')) {
     const c = Number(body.cod_membro);
@@ -1269,6 +1290,7 @@ app.post('/api/solicitacao', rateLimitSolicitacao, upload.single('foto'), async 
       .single();
 
     if (!insErr && ins) {
+      await sincronizarMembroComCongregacao(membroId, congregacaoNome);
       return res.json({ ok: true, protocolo: ins.protocolo, id: ins.id });
     }
     if (insErr?.code === '23505') {
@@ -1369,6 +1391,8 @@ app.post('/api/solicitacao-novo-membro', rateLimitSolicitacao, upload.single('fo
         data_batismo: db.data,
         cargo: cargoRes.texto,
         sexo: sexoRes.texto,
+        congregacao: congregacaoRes.texto,
+        situacao_membro: 'ATUALIZADO',
       })
       .select('id, cod_membro')
       .single();
@@ -1418,6 +1442,7 @@ app.post('/api/solicitacao-novo-membro', rateLimitSolicitacao, upload.single('fo
         membro_id: membroId,
         foto_url: fotoUrl,
         protocolo,
+        congregacao_nome: congregacaoRes.texto,
         status_solicitacao: 'pendente',
       })
       .select('id, protocolo')

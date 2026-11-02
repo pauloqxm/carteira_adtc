@@ -561,6 +561,7 @@ function abrirModalEditarMembro(row) {
   el('edit-nacionalidade').value = m.nacionalidade || '';
   el('edit-estado-civil').value = m.estado_civil || '';
   el('edit-cargo').value = m.cargo || '';
+  if (el('edit-telefone')) el('edit-telefone').value = m.whatsapp_telefone || '';
   if (el('edit-congregacao')) el('edit-congregacao').value = m.congregacao || '';
   if (el('edit-situacao')) el('edit-situacao').value = m.situacao_membro || '';
   const sx = String(m.sexo || '').trim();
@@ -623,6 +624,7 @@ async function guardarEdicaoMembro() {
     sexo: el('edit-sexo').value.trim() || null,
     congregacao: el('edit-congregacao')?.value.trim() || null,
     situacao_membro: el('edit-situacao')?.value.trim() || null,
+    whatsapp_telefone: el('edit-telefone')?.value.trim() || null,
   };
 
   const btn = el('btn-editar-guardar');
@@ -1123,7 +1125,7 @@ function renderTabelaMembros(itens) {
   const tbody = el('tbody-membros');
   tbody.innerHTML = '';
   if (!itens?.length) {
-    tbody.innerHTML = '<tr><td colspan="6">Nenhum membro encontrado.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7">Nenhum membro encontrado.</td></tr>';
     return;
   }
   for (const m of itens) {
@@ -1134,6 +1136,7 @@ function renderTabelaMembros(itens) {
       <td><strong>${escapeHtml(m.nome_completo || '—')}</strong></td>
       <td>${escapeHtml(m.congregacao || '—')}</td>
       <td>${escapeHtml(m.situacao_membro || '—')}</td>
+      <td>${escapeHtml(m.whatsapp_telefone || '—')}</td>
       <td>${escapeHtml(m.sexo || '—')}</td>
       <td>${escapeHtml(m.cargo || '—')}</td>
     `;
@@ -1160,7 +1163,7 @@ async function carregarListaMembros() {
     msg.hidden = true;
     msg.classList.remove('admin-msg--ok');
   }
-  if (tbody) tbody.innerHTML = '<tr><td colspan="6">Carregando…</td></tr>';
+  if (tbody) tbody.innerHTML = '<tr><td colspan="7">Carregando…</td></tr>';
   const params = new URLSearchParams();
   params.set('page', String(membrosPage));
   params.set('limit', String(MEMBROS_LIMIT));
@@ -1237,6 +1240,7 @@ async function abrirFichaMembro(id) {
     el('ficha-cod').value = m.cod_membro != null ? String(m.cod_membro) : '';
     const cpfD = apenasDigitosCpf(m.cpf);
     el('ficha-cpf').value = cpfD ? formatarCpfMascara(cpfD) : '';
+    el('ficha-telefone').value = m.whatsapp_telefone || '';
     el('ficha-congregacao').value = m.congregacao || '';
     el('ficha-situacao').value = m.situacao_membro || '';
     el('ficha-data-nasc').value = isoParaInputDate(m.data_nasc);
@@ -1336,6 +1340,7 @@ async function guardarFichaMembro() {
     nome_completo: nome,
     cod_membro: cod,
     cpf: cpfDigits || null,
+    whatsapp_telefone: el('ficha-telefone').value.trim() || null,
     congregacao: el('ficha-congregacao').value.trim() || null,
     situacao_membro: el('ficha-situacao').value.trim() || null,
     data_nasc: el('ficha-data-nasc').value || null,
