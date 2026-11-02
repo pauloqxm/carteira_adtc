@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="robots" content="noindex, nofollow" />
   <meta name="theme-color" content="#008ad1" />
-  <title>Admin — Solicitações de carteira</title>
+  <title>Admin — Painel administrativo</title>
   <link rel="icon" href="https://adtcquixeramobim.com/assets/logo-igreja.jpg" type="image/jpeg" />
   <link rel="stylesheet" href="style.css" />
   <link rel="stylesheet" href="admin.css" />
@@ -25,7 +25,7 @@
         <div class="topo__marca-admin-texto">
           <p class="topo__marca-sup">Assembleia de Deus · Templo Central</p>
           <h1 class="topo__titulo">Painel administrativo</h1>
-          <p class="topo__sub">Solicitações de cartão de membro</p>
+          <p class="topo__sub" id="topo-sub">Escolha um módulo para continuar</p>
         </div>
       </div>
       <button type="button" id="btn-sair-top" class="btn btn--fantasma btn-sair-top" hidden>Sair da sessão</button>
@@ -63,8 +63,33 @@
       <p id="login-msg" class="admin-msg" hidden></p>
     </section>
 
+    <section id="sec-hub" class="admin-hub" hidden>
+      <h2 class="admin-hub__titulo">Módulos</h2>
+      <p class="admin-hub__texto">Selecione a área em que deseja trabalhar.</p>
+      <div class="admin-hub__grid">
+        <button type="button" class="admin-hub-card" id="hub-emissao" data-modulo="emissao">
+          <span class="admin-hub-card__eyebrow">Credenciais</span>
+          <strong class="admin-hub-card__titulo">Emissão de Credencial</strong>
+          <span class="admin-hub-card__desc">
+            Solicitações, aprovação, registo de emissões e geração de PDF da carteira.
+          </span>
+        </button>
+        <button type="button" class="admin-hub-card" id="hub-gestao" data-modulo="gestao">
+          <span class="admin-hub-card__eyebrow">Cadastro</span>
+          <strong class="admin-hub-card__titulo">Gestão de Membros</strong>
+          <span class="admin-hub-card__desc">
+            Dashboard, lista de membros e edição individual do cadastro.
+          </span>
+        </button>
+      </div>
+    </section>
+
     <div id="sec-painel" hidden>
-      <nav class="admin-tabs" id="admin-tabs" aria-label="Secções do painel">
+      <div class="admin-modulo-barra">
+        <button type="button" class="btn btn--fantasma btn--mini" id="btn-voltar-hub-emissao">← Voltar ao hub</button>
+        <span class="admin-modulo-barra__nome">Emissão de Credencial</span>
+      </div>
+      <nav class="admin-tabs" id="admin-tabs" aria-label="Secções de emissão">
         <button type="button" class="admin-tab admin-tab--active" data-tab="solicitacoes">Solicitações</button>
         <button type="button" class="admin-tab" data-tab="emitidas">Carteiras emitidas</button>
         <button type="button" class="admin-tab" data-tab="carteira">Gerar carteira</button>
@@ -205,6 +230,199 @@
         ></iframe>
       </section>
     </div>
+
+    <div id="sec-gestao" hidden>
+      <div class="admin-modulo-barra">
+        <button type="button" class="btn btn--fantasma btn--mini" id="btn-voltar-hub-gestao">← Voltar ao hub</button>
+        <span class="admin-modulo-barra__nome">Gestão de Membros</span>
+      </div>
+
+      <div id="gestao-vista-lista">
+        <section class="card admin-tab-panel">
+          <div class="admin-gestao-topo">
+            <div>
+              <h2 class="card__titulo">Dashboard</h2>
+              <p class="card__texto card__texto--peq">Visão geral dos membros cadastrados.</p>
+            </div>
+            <article class="admin-kpi admin-kpi--emitida admin-kpi--destaque">
+              <span class="admin-kpi__label">Membros</span>
+              <strong id="dash-total-membros" class="admin-kpi__valor">0</strong>
+            </article>
+          </div>
+          <p id="dash-msg" class="admin-msg" hidden></p>
+          <div class="admin-dash-grid">
+            <section class="admin-dash-card">
+              <h3 class="admin-dash-card__titulo">Congregações</h3>
+              <div id="dash-congregacoes" class="admin-rank"></div>
+            </section>
+            <section class="admin-dash-card">
+              <h3 class="admin-dash-card__titulo">Sexo</h3>
+              <div id="dash-sexo" class="admin-bars"></div>
+            </section>
+            <section class="admin-dash-card">
+              <h3 class="admin-dash-card__titulo">Situação do membro</h3>
+              <div id="dash-situacao" class="admin-bars"></div>
+            </section>
+            <section class="admin-dash-card">
+              <h3 class="admin-dash-card__titulo">Faixas etárias</h3>
+              <div id="dash-faixas" class="admin-bars"></div>
+            </section>
+            <section class="admin-dash-card">
+              <h3 class="admin-dash-card__titulo">Cargos</h3>
+              <div id="dash-cargos" class="admin-bars"></div>
+            </section>
+            <section class="admin-dash-card">
+              <h3 class="admin-dash-card__titulo">Batismos por ano</h3>
+              <div id="dash-batismos" class="admin-line"></div>
+            </section>
+            <section class="admin-dash-card admin-dash-card--wide">
+              <h3 class="admin-dash-card__titulo">Carteiras</h3>
+              <div class="admin-kpis admin-kpis--carteiras" id="dash-carteiras"></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="card admin-tab-panel">
+          <h2 class="card__titulo">Lista de membros</h2>
+          <div class="admin-toolbar admin-toolbar--gestao">
+            <label class="campo campo--inline">
+              <span class="campo__label">Buscar</span>
+              <input
+                id="membros-q"
+                class="campo__input"
+                type="search"
+                placeholder="Nome, CPF ou código"
+                autocomplete="off"
+              />
+            </label>
+            <label class="campo campo--inline">
+              <span class="campo__label">Congregação</span>
+              <select id="membros-filtro-cong" class="campo__input">
+                <option value="">Todas</option>
+                <option value="__vazio__">Sem congregação</option>
+              </select>
+            </label>
+            <label class="campo campo--inline">
+              <span class="campo__label">Situação</span>
+              <select id="membros-filtro-sit" class="campo__input">
+                <option value="">Todas</option>
+                <option value="__vazio__">Sem situação</option>
+              </select>
+            </label>
+            <button type="button" id="btn-membros-buscar" class="btn btn--secundario btn--mini">Filtrar</button>
+            <button type="button" id="btn-membros-atualizar" class="btn btn--fantasma btn--mini">Atualizar</button>
+          </div>
+          <p id="membros-lista-msg" class="admin-msg" hidden></p>
+          <div class="admin-table-wrap">
+            <table class="admin-table">
+              <thead>
+                <tr>
+                  <th>Código</th>
+                  <th>Nome</th>
+                  <th>Congregação</th>
+                  <th>Situação</th>
+                  <th>Sexo</th>
+                  <th>Cargo</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-membros"></tbody>
+            </table>
+          </div>
+          <div class="admin-paginacao">
+            <button type="button" id="btn-membros-prev" class="btn btn--fantasma btn--mini">Anterior</button>
+            <span id="membros-pagina-info" class="admin-paginacao__info">—</span>
+            <button type="button" id="btn-membros-next" class="btn btn--fantasma btn--mini">Seguinte</button>
+          </div>
+        </section>
+      </div>
+
+      <section id="gestao-vista-ficha" class="card admin-tab-panel" hidden>
+        <div class="admin-modulo-barra admin-modulo-barra--ficha">
+          <button type="button" class="btn btn--fantasma btn--mini" id="btn-voltar-lista-membros">
+            ← Voltar à lista
+          </button>
+          <span class="admin-modulo-barra__nome" id="ficha-titulo">Ficha do membro</span>
+        </div>
+        <p id="ficha-msg" class="admin-msg" hidden></p>
+        <input type="hidden" id="ficha-membro-id" value="" />
+        <div class="admin-ficha-grid">
+          <label class="campo">
+            <span class="campo__label">Nome completo</span>
+            <input id="ficha-nome" class="campo__input" type="text" autocomplete="name" />
+          </label>
+          <label class="campo">
+            <span class="campo__label">Código de membro</span>
+            <input id="ficha-cod" class="campo__input" type="number" min="1" step="1" />
+          </label>
+          <label class="campo">
+            <span class="campo__label">CPF</span>
+            <input id="ficha-cpf" class="campo__input" type="text" inputmode="numeric" maxlength="14" />
+          </label>
+          <label class="campo">
+            <span class="campo__label">Congregação</span>
+            <input id="ficha-congregacao" class="campo__input" type="text" />
+          </label>
+          <label class="campo">
+            <span class="campo__label">Situação do membro</span>
+            <input id="ficha-situacao" class="campo__input" type="text" list="lista-situacoes" />
+            <datalist id="lista-situacoes">
+              <option value="ATUALIZADO"></option>
+              <option value="NÃO ATUALIZADO"></option>
+              <option value="ATIVO"></option>
+              <option value="INATIVO"></option>
+            </datalist>
+          </label>
+          <label class="campo">
+            <span class="campo__label">Data de nascimento</span>
+            <input id="ficha-data-nasc" class="campo__input" type="date" />
+          </label>
+          <label class="campo">
+            <span class="campo__label">Data de batismo</span>
+            <input id="ficha-data-batismo" class="campo__input" type="date" />
+          </label>
+          <label class="campo">
+            <span class="campo__label">Nacionalidade</span>
+            <input id="ficha-nacionalidade" class="campo__input" type="text" />
+          </label>
+          <label class="campo">
+            <span class="campo__label">Estado civil</span>
+            <input id="ficha-estado-civil" class="campo__input" type="text" />
+          </label>
+          <label class="campo">
+            <span class="campo__label">Cargo</span>
+            <input id="ficha-cargo" class="campo__input" type="text" />
+          </label>
+          <label class="campo">
+            <span class="campo__label">Sexo</span>
+            <select id="ficha-sexo" class="campo__input">
+              <option value="">—</option>
+              <option value="Masculino">Masculino</option>
+              <option value="Feminino">Feminino</option>
+              <option value="Outro">Outro</option>
+            </select>
+          </label>
+        </div>
+        <div class="admin-modal__actions">
+          <button type="button" id="btn-ficha-guardar" class="btn btn--primario">Guardar alterações</button>
+        </div>
+
+        <h3 class="admin-dash-card__titulo" style="margin-top: 1.5rem">Solicitações / carteiras</h3>
+        <div class="admin-table-wrap">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>Protocolo</th>
+                <th>Status</th>
+                <th>Criada em</th>
+                <th>Emitida em</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody id="tbody-ficha-sols"></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
   </main>
 
   <div id="modal-editar-membro" class="admin-modal" hidden>
@@ -225,6 +443,14 @@
       <label class="campo">
         <span class="campo__label">CPF</span>
         <input id="edit-cpf" class="campo__input" type="text" inputmode="numeric" maxlength="14" placeholder="000.000.000-00" />
+      </label>
+      <label class="campo">
+        <span class="campo__label">Congregação</span>
+        <input id="edit-congregacao" class="campo__input" type="text" />
+      </label>
+      <label class="campo">
+        <span class="campo__label">Situação do membro</span>
+        <input id="edit-situacao" class="campo__input" type="text" />
       </label>
       <label class="campo">
         <span class="campo__label">Data de nascimento</span>

@@ -9,6 +9,11 @@ let loginMode = 'token';
 let listaSolicitacoesAtual = [];
 /** Última lista de carteiras emitidas. */
 let listaEmitidasAtual = [];
+/** Paginação da lista de membros. */
+let membrosPage = 1;
+let membrosPages = 1;
+let membrosTotal = 0;
+const MEMBROS_LIMIT = 50;
 
 /** Cache do último PDF gerado `{ chave, blob, fname }` (evita gerar duas vezes ao visualizar e descarregar). */
 let carteiraPdfCache = null;
@@ -99,10 +104,18 @@ function setSairVisivel(visivel) {
   el('btn-sair-top').hidden = !visivel;
 }
 
+function setTopoSub(texto) {
+  const sub = el('topo-sub');
+  if (sub) sub.textContent = texto;
+}
+
 function mostrarLogin(erro, alvo) {
   el('sec-login').hidden = false;
+  el('sec-hub').hidden = true;
   el('sec-painel').hidden = true;
+  el('sec-gestao').hidden = true;
   setSairVisivel(false);
+  setTopoSub('Acesso restrito à secretaria');
   const geral = el('login-msg');
   geral.hidden = true;
   const mp = el('login-msg-pass');
@@ -123,10 +136,40 @@ function mostrarLogin(erro, alvo) {
   }
 }
 
-function mostrarPainel() {
+function mostrarHub() {
   el('sec-login').hidden = true;
-  el('sec-painel').hidden = false;
+  el('sec-hub').hidden = false;
+  el('sec-painel').hidden = true;
+  el('sec-gestao').hidden = true;
   setSairVisivel(true);
+  setTopoSub('Escolha um módulo para continuar');
+}
+
+function abrirModuloEmissao() {
+  el('sec-login').hidden = true;
+  el('sec-hub').hidden = true;
+  el('sec-painel').hidden = false;
+  el('sec-gestao').hidden = true;
+  setSairVisivel(true);
+  setTopoSub('Emissão de Credencial');
+  switchTab('solicitacoes');
+  carregarLista();
+}
+
+function abrirModuloGestao() {
+  el('sec-login').hidden = true;
+  el('sec-hub').hidden = true;
+  el('sec-painel').hidden = true;
+  el('sec-gestao').hidden = false;
+  setSairVisivel(true);
+  setTopoSub('Gestão de Membros');
+  mostrarVistaListaMembros();
+  carregarGestaoMembros();
+}
+
+/** @deprecated use mostrarHub — mantido só se algum código antigo chamar */
+function mostrarPainel() {
+  mostrarHub();
 }
 
 function renderKpis(totais) {
@@ -518,6 +561,8 @@ function abrirModalEditarMembro(row) {
   el('edit-nacionalidade').value = m.nacionalidade || '';
   el('edit-estado-civil').value = m.estado_civil || '';
   el('edit-cargo').value = m.cargo || '';
+  if (el('edit-congregacao')) el('edit-congregacao').value = m.congregacao || '';
+  if (el('edit-situacao')) el('edit-situacao').value = m.situacao_membro || '';
   const sx = String(m.sexo || '').trim();
   const sel = el('edit-sexo');
   while (sel.options.length > 4) sel.remove(4);
@@ -576,6 +621,8 @@ async function guardarEdicaoMembro() {
     estado_civil: el('edit-estado-civil').value.trim() || null,
     cargo: el('edit-cargo').value.trim() || null,
     sexo: el('edit-sexo').value.trim() || null,
+    congregacao: el('edit-congregacao')?.value.trim() || null,
+    situacao_membro: el('edit-situacao')?.value.trim() || null,
   };
 
   const btn = el('btn-editar-guardar');
@@ -909,6 +956,413 @@ function sair() {
   mostrarLogin();
 }
 
+function maxTotal(itens) {
+  return Math.max(1, ...itens.map((x) => Number(x.total) || 0));
+}
+
+function renderBarras(containerId, itens, { alt = false, warn = false } = {}) {
+  const box = el(containerId);
+  if (!box) return;
+  if (!itens?.length) {
+    box.innerHTML = '<p class="admin-bars__empty">Sem dados.</p>';
+    return;
+  }
+  const max = maxTotal(itens);
+  box.innerHTML = itens
+    .map((item, idx) => {
+      const total = Number(item.total) || 0;
+      const pct = Math.round((total / max) * 100);
+      let fillCls = 'admin-bars__fill';
+      if (warn && idx === 1) fillCls += ' admin-bars__fill--warn';
+      else if (alt && idx % 2 === 1) fillCls += ' admin-bars__fill--alt';
+      return `<div class="admin-bars__row">
+        <div class="admin-bars__meta">
+          <span class="admin-bars__nome">${escapeHtml(item.chave)}</span>
+          <span class="admin-bars__total">${total}</span>
+        </div>
+        <div class="admin-bars__track"><span class="${fillCls}" style="width:${pct}%"></span></div>
+      </div>`;
+    })
+    .join('');
+}
+
+function renderRankingCongregacoes(itens) {
+  const box = el('dash-congregacoes');
+  if (!box) return;
+  if (!itens?.length) {
+    box.innerHTML = '<p class="admin-rank__empty">Sem dados de congregação.</p>';
+    return;
+  }
+  const max = maxTotal(itens);
+  box.innerHTML = itens
+    .map((item) => {
+      const total = Number(item.total) || 0;
+      const pct = Math.round((total / max) * 100);
+      return `<div class="admin-rank__row">
+        <div class="admin-rank__meta">
+          <span class="admin-rank__nome">${escapeHtml(item.chave)}</span>
+          <span class="admin-rank__total">${total}</span>
+        </div>
+        <div class="admin-rank__track"><span class="admin-rank__fill" style="width:${pct}%"></span></div>
+      </div>`;
+    })
+    .join('');
+}
+
+function renderLinhaBatismos(itens) {
+  const box = el('dash-batismos');
+  if (!box) return;
+  if (!itens?.length) {
+    box.innerHTML = '<p class="admin-line__empty">Sem datas de batismo.</p>';
+    return;
+  }
+  const w = 320;
+  const h = 128;
+  const pad = 18;
+  const max = Math.max(1, ...itens.map((x) => Number(x.total) || 0));
+  const n = itens.length;
+  const pts = itens.map((item, i) => {
+    const x = pad + (n === 1 ? (w - pad * 2) / 2 : (i * (w - pad * 2)) / (n - 1));
+    const y = h - pad - ((Number(item.total) || 0) / max) * (h - pad * 2);
+    return { x, y, ano: item.ano, total: item.total };
+  });
+  const d = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+  const labels =
+    n <= 12
+      ? pts
+          .map(
+            (p) =>
+              `<text x="${p.x.toFixed(1)}" y="${h - 4}" text-anchor="middle" fill="#94a3b8" font-size="9">${escapeHtml(String(p.ano).slice(2))}</text>`,
+          )
+          .join('')
+      : '';
+  box.innerHTML = `<svg viewBox="0 0 ${w} ${h}" role="img" aria-label="Batismos por ano">
+    <path d="${d}" fill="none" stroke="#008ad1" stroke-width="2.5" />
+    ${pts.map((p) => `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3" fill="#12a0e8"><title>${escapeHtml(String(p.ano))}: ${p.total}</title></circle>`).join('')}
+    ${labels}
+  </svg>`;
+}
+
+function renderDashCarteiras(carteiras) {
+  const box = el('dash-carteiras');
+  if (!box) return;
+  const c = carteiras || {};
+  box.innerHTML = `
+    <article class="admin-kpi admin-kpi--pendente"><span class="admin-kpi__label">Pendentes</span><strong class="admin-kpi__valor">${c.pendente ?? 0}</strong></article>
+    <article class="admin-kpi admin-kpi--aprovada"><span class="admin-kpi__label">Aprovadas</span><strong class="admin-kpi__valor">${c.aprovada ?? 0}</strong></article>
+    <article class="admin-kpi admin-kpi--rejeitada"><span class="admin-kpi__label">Rejeitadas</span><strong class="admin-kpi__valor">${c.rejeitada ?? 0}</strong></article>
+    <article class="admin-kpi admin-kpi--emitida"><span class="admin-kpi__label">Emitidas</span><strong class="admin-kpi__valor">${c.emitida ?? 0}</strong></article>
+  `;
+}
+
+function renderDashboard(data) {
+  el('dash-total-membros').textContent = String(data?.total ?? 0);
+  renderRankingCongregacoes(data?.por_congregacao || []);
+  renderBarras('dash-sexo', data?.por_sexo || [], { alt: true });
+  renderBarras('dash-situacao', data?.por_situacao || [], { warn: true });
+  renderBarras('dash-faixas', data?.faixas_etarias || []);
+  renderBarras('dash-cargos', data?.por_cargo || []);
+  renderLinhaBatismos(data?.batismos_por_ano || []);
+  renderDashCarteiras(data?.carteiras);
+}
+
+async function carregarDashboardMembros() {
+  const msg = el('dash-msg');
+  if (msg) {
+    msg.hidden = true;
+    msg.classList.remove('admin-msg--ok');
+  }
+  try {
+    const data = await api('/api/admin/membros/dashboard');
+    renderDashboard(data);
+  } catch (e) {
+    if (e.status === 401) {
+      setToken('');
+      mostrarLogin('Sessão expirada ou acesso inválido.', loginMode === 'password' ? 'pass' : 'token');
+      return;
+    }
+    if (msg) {
+      msg.textContent = e.message || 'Erro ao carregar dashboard.';
+      msg.hidden = false;
+    }
+  }
+}
+
+function preencherSelectFiltro(selectEl, valores, placeholderTodos, placeholderVazio) {
+  if (!selectEl) return;
+  const atual = selectEl.value;
+  selectEl.innerHTML = '';
+  const optTodos = document.createElement('option');
+  optTodos.value = '';
+  optTodos.textContent = placeholderTodos;
+  selectEl.appendChild(optTodos);
+  const optVazio = document.createElement('option');
+  optVazio.value = '__vazio__';
+  optVazio.textContent = placeholderVazio;
+  selectEl.appendChild(optVazio);
+  for (const v of valores || []) {
+    const opt = document.createElement('option');
+    opt.value = v;
+    opt.textContent = v;
+    selectEl.appendChild(opt);
+  }
+  if ([...selectEl.options].some((o) => o.value === atual)) selectEl.value = atual;
+}
+
+async function carregarFiltrosMembros() {
+  try {
+    const data = await api('/api/admin/membros/filtros');
+    preencherSelectFiltro(el('membros-filtro-cong'), data.congregacoes, 'Todas', 'Sem congregação');
+    preencherSelectFiltro(el('membros-filtro-sit'), data.situacoes, 'Todas', 'Sem situação');
+  } catch {
+    /* filtros opcionais */
+  }
+}
+
+function renderTabelaMembros(itens) {
+  const tbody = el('tbody-membros');
+  tbody.innerHTML = '';
+  if (!itens?.length) {
+    tbody.innerHTML = '<tr><td colspan="6">Nenhum membro encontrado.</td></tr>';
+    return;
+  }
+  for (const m of itens) {
+    const tr = document.createElement('tr');
+    tr.className = 'admin-row--click';
+    tr.innerHTML = `
+      <td>${escapeHtml(String(m.cod_membro ?? '—'))}</td>
+      <td><strong>${escapeHtml(m.nome_completo || '—')}</strong></td>
+      <td>${escapeHtml(m.congregacao || '—')}</td>
+      <td>${escapeHtml(m.situacao_membro || '—')}</td>
+      <td>${escapeHtml(m.sexo || '—')}</td>
+      <td>${escapeHtml(m.cargo || '—')}</td>
+    `;
+    tr.addEventListener('click', () => abrirFichaMembro(m.id));
+    tbody.appendChild(tr);
+  }
+}
+
+function atualizarPaginacaoMembros() {
+  const info = el('membros-pagina-info');
+  const from = membrosTotal === 0 ? 0 : (membrosPage - 1) * MEMBROS_LIMIT + 1;
+  const to = Math.min(membrosPage * MEMBROS_LIMIT, membrosTotal);
+  if (info) info.textContent = `${from} – ${to} / ${membrosTotal}`;
+  const prev = el('btn-membros-prev');
+  const next = el('btn-membros-next');
+  if (prev) prev.disabled = membrosPage <= 1;
+  if (next) next.disabled = membrosPage >= membrosPages;
+}
+
+async function carregarListaMembros() {
+  const msg = el('membros-lista-msg');
+  const tbody = el('tbody-membros');
+  if (msg) {
+    msg.hidden = true;
+    msg.classList.remove('admin-msg--ok');
+  }
+  if (tbody) tbody.innerHTML = '<tr><td colspan="6">Carregando…</td></tr>';
+  const params = new URLSearchParams();
+  params.set('page', String(membrosPage));
+  params.set('limit', String(MEMBROS_LIMIT));
+  const q = el('membros-q')?.value.trim() || '';
+  const cong = el('membros-filtro-cong')?.value || '';
+  const sit = el('membros-filtro-sit')?.value || '';
+  if (q) params.set('q', q);
+  if (cong) params.set('congregacao', cong);
+  if (sit) params.set('situacao', sit);
+  try {
+    const data = await api(`/api/admin/membros?${params.toString()}`);
+    membrosTotal = data.total ?? 0;
+    membrosPages = data.pages ?? 1;
+    membrosPage = data.page ?? 1;
+    renderTabelaMembros(data.itens);
+    atualizarPaginacaoMembros();
+  } catch (e) {
+    if (tbody) tbody.innerHTML = '';
+    if (e.status === 401) {
+      setToken('');
+      mostrarLogin('Sessão expirada ou acesso inválido.', loginMode === 'password' ? 'pass' : 'token');
+      return;
+    }
+    if (msg) {
+      msg.textContent = e.message || 'Erro ao listar membros.';
+      msg.hidden = false;
+    }
+  }
+}
+
+async function carregarGestaoMembros() {
+  await Promise.all([carregarDashboardMembros(), carregarFiltrosMembros(), carregarListaMembros()]);
+}
+
+function mostrarVistaListaMembros() {
+  el('gestao-vista-lista').hidden = false;
+  el('gestao-vista-ficha').hidden = true;
+}
+
+function mostrarVistaFicha() {
+  el('gestao-vista-lista').hidden = true;
+  el('gestao-vista-ficha').hidden = false;
+}
+
+function setSexoSelect(sel, valor) {
+  const sx = String(valor || '').trim();
+  while (sel.options.length > 4) sel.remove(4);
+  const padrao = ['', 'Masculino', 'Feminino', 'Outro'];
+  if (padrao.includes(sx)) sel.value = sx;
+  else if (sx) {
+    const opt = document.createElement('option');
+    opt.value = sx;
+    opt.textContent = sx;
+    sel.appendChild(opt);
+    sel.value = sx;
+  } else sel.value = '';
+}
+
+async function abrirFichaMembro(id) {
+  if (!id) return;
+  const msg = el('ficha-msg');
+  if (msg) {
+    msg.hidden = true;
+    msg.classList.remove('admin-msg--ok');
+  }
+  mostrarVistaFicha();
+  el('ficha-titulo').textContent = 'A carregar…';
+  try {
+    const data = await api(`/api/admin/membros/${id}`);
+    const m = data.membro;
+    el('ficha-membro-id').value = m.id;
+    el('ficha-titulo').textContent = m.nome_completo || 'Ficha do membro';
+    el('ficha-nome').value = m.nome_completo || '';
+    el('ficha-cod').value = m.cod_membro != null ? String(m.cod_membro) : '';
+    const cpfD = apenasDigitosCpf(m.cpf);
+    el('ficha-cpf').value = cpfD ? formatarCpfMascara(cpfD) : '';
+    el('ficha-congregacao').value = m.congregacao || '';
+    el('ficha-situacao').value = m.situacao_membro || '';
+    el('ficha-data-nasc').value = isoParaInputDate(m.data_nasc);
+    el('ficha-data-batismo').value = isoParaInputDate(m.data_batismo);
+    el('ficha-nacionalidade').value = m.nacionalidade || '';
+    el('ficha-estado-civil').value = m.estado_civil || '';
+    el('ficha-cargo').value = m.cargo || '';
+    setSexoSelect(el('ficha-sexo'), m.sexo);
+
+    const tbody = el('tbody-ficha-sols');
+    tbody.innerHTML = '';
+    const sols = data.solicitacoes || [];
+    if (!sols.length) {
+      tbody.innerHTML = '<tr><td colspan="5">Nenhuma solicitação associada.</td></tr>';
+    } else {
+      for (const s of sols) {
+        const tr = document.createElement('tr');
+        const tdProt = document.createElement('td');
+        tdProt.innerHTML = `<strong>${escapeHtml(s.protocolo || '')}</strong>`;
+        tr.appendChild(tdProt);
+        const tdSt = document.createElement('td');
+        const sp = document.createElement('span');
+        sp.className = badgeClass(s.status_solicitacao);
+        sp.textContent = s.status_solicitacao || '';
+        tdSt.appendChild(sp);
+        if (s.emitida_em) {
+          const em = document.createElement('span');
+          em.className = 'badge badge--emitida';
+          em.textContent = 'emitida';
+          tdSt.appendChild(em);
+        }
+        tr.appendChild(tdSt);
+        const tdC = document.createElement('td');
+        tdC.textContent = formatarData(s.created_at);
+        tr.appendChild(tdC);
+        const tdE = document.createElement('td');
+        tdE.textContent = s.emitida_em ? formatarData(s.emitida_em) : '—';
+        tr.appendChild(tdE);
+        const tdA = document.createElement('td');
+        tdA.className = 'admin-acoes';
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'btn btn--mini btn--secundario';
+        btn.textContent = 'Carteira';
+        btn.addEventListener('click', () => {
+          abrirModuloEmissao();
+          switchTab('carteira');
+          invalidarCacheCarteiraPdf();
+          el('carteira-protocolo').value = s.protocolo || '';
+          el('carteira-solicitacao-id').value = s.id || '';
+          el('carteira-msg').hidden = true;
+        });
+        tdA.appendChild(btn);
+        tr.appendChild(tdA);
+        tbody.appendChild(tr);
+      }
+    }
+  } catch (e) {
+    if (msg) {
+      msg.textContent = e.message || 'Erro ao abrir ficha.';
+      msg.hidden = false;
+    }
+    el('ficha-titulo').textContent = 'Ficha do membro';
+  }
+}
+
+async function guardarFichaMembro() {
+  const id = el('ficha-membro-id').value.trim();
+  const msg = el('ficha-msg');
+  msg.hidden = true;
+  msg.classList.remove('admin-msg--ok');
+  if (!id) return;
+
+  const nome = el('ficha-nome').value.trim();
+  if (nome.length < 2) {
+    msg.textContent = 'Indique um nome completo válido.';
+    msg.hidden = false;
+    return;
+  }
+  const cpfDigits = apenasDigitosCpf(el('ficha-cpf').value);
+  if (cpfDigits) {
+    const v = validarCpf(cpfDigits);
+    if (!v.valido) {
+      msg.textContent = v.motivo || 'CPF inválido.';
+      msg.hidden = false;
+      return;
+    }
+  }
+  const cod = parseInt(el('ficha-cod').value.trim(), 10);
+  if (!Number.isInteger(cod) || cod < 1) {
+    msg.textContent = 'Código de membro inválido.';
+    msg.hidden = false;
+    return;
+  }
+
+  const body = {
+    nome_completo: nome,
+    cod_membro: cod,
+    cpf: cpfDigits || null,
+    congregacao: el('ficha-congregacao').value.trim() || null,
+    situacao_membro: el('ficha-situacao').value.trim() || null,
+    data_nasc: el('ficha-data-nasc').value || null,
+    data_batismo: el('ficha-data-batismo').value || null,
+    nacionalidade: el('ficha-nacionalidade').value.trim() || null,
+    estado_civil: el('ficha-estado-civil').value.trim() || null,
+    cargo: el('ficha-cargo').value.trim() || null,
+    sexo: el('ficha-sexo').value.trim() || null,
+  };
+
+  const btn = el('btn-ficha-guardar');
+  btn.disabled = true;
+  try {
+    await api(`/api/admin/membros/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
+    msg.textContent = 'Alterações guardadas.';
+    msg.classList.add('admin-msg--ok');
+    msg.hidden = false;
+    el('ficha-titulo').textContent = nome;
+    await Promise.all([carregarDashboardMembros(), carregarFiltrosMembros(), carregarListaMembros()]);
+  } catch (e) {
+    msg.textContent = e.message || 'Falha ao guardar.';
+    msg.hidden = false;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 async function carregarConfigLogin() {
   const cfg = await fetch('/api/admin/config').then((r) => r.json());
   loginMode = cfg.loginMode === 'password' ? 'password' : 'token';
@@ -929,10 +1383,16 @@ async function init() {
   }
 
   if (getToken()) {
-    mostrarPainel();
-    carregarLista();
+    mostrarHub();
   } else {
     mostrarLogin();
+  }
+
+  async function validarSessaoEEntrarNoHub() {
+    await api('/api/admin/config');
+    // Confirma token com um endpoint protegido leve
+    await api('/api/admin/solicitacoes?status=pendente');
+    mostrarHub();
   }
 
   el('btn-login-pass').addEventListener('click', async () => {
@@ -949,10 +1409,7 @@ async function init() {
         skipAuth: true,
       });
       setToken(token);
-      const { itens, totais } = await fetchLista();
-      mostrarPainel();
-      renderKpis(totais);
-      renderTabela(itens);
+      mostrarHub();
     } catch (e) {
       setToken('');
       mostrarLogin(e.message || 'Erro ao entrar.', 'pass');
@@ -967,10 +1424,7 @@ async function init() {
     }
     setToken(t);
     try {
-      const { itens, totais } = await fetchLista();
-      mostrarPainel();
-      renderKpis(totais);
-      renderTabela(itens);
+      await validarSessaoEEntrarNoHub();
     } catch (e) {
       setToken('');
       mostrarLogin(
@@ -983,8 +1437,13 @@ async function init() {
   });
 
   const sairHandler = () => sair();
-  el('btn-sair').addEventListener('click', sairHandler);
+  el('btn-sair')?.addEventListener('click', sairHandler);
   el('btn-sair-top').addEventListener('click', sairHandler);
+
+  el('hub-emissao')?.addEventListener('click', () => abrirModuloEmissao());
+  el('hub-gestao')?.addEventListener('click', () => abrirModuloGestao());
+  el('btn-voltar-hub-emissao')?.addEventListener('click', () => mostrarHub());
+  el('btn-voltar-hub-gestao')?.addEventListener('click', () => mostrarHub());
 
   el('btn-atualizar').addEventListener('click', () => carregarLista());
   el('filtro-status').addEventListener('change', () => carregarLista());
@@ -1015,6 +1474,51 @@ async function init() {
     cpfEdit.addEventListener('input', () => {
       const d = apenasDigitosCpf(cpfEdit.value);
       cpfEdit.value = d ? formatarCpfMascara(d) : '';
+    });
+  }
+
+  el('btn-membros-buscar')?.addEventListener('click', () => {
+    membrosPage = 1;
+    carregarListaMembros();
+  });
+  el('btn-membros-atualizar')?.addEventListener('click', () => carregarGestaoMembros());
+  el('membros-q')?.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter') {
+      ev.preventDefault();
+      membrosPage = 1;
+      carregarListaMembros();
+    }
+  });
+  el('membros-filtro-cong')?.addEventListener('change', () => {
+    membrosPage = 1;
+    carregarListaMembros();
+  });
+  el('membros-filtro-sit')?.addEventListener('change', () => {
+    membrosPage = 1;
+    carregarListaMembros();
+  });
+  el('btn-membros-prev')?.addEventListener('click', () => {
+    if (membrosPage > 1) {
+      membrosPage -= 1;
+      carregarListaMembros();
+    }
+  });
+  el('btn-membros-next')?.addEventListener('click', () => {
+    if (membrosPage < membrosPages) {
+      membrosPage += 1;
+      carregarListaMembros();
+    }
+  });
+  el('btn-voltar-lista-membros')?.addEventListener('click', () => {
+    mostrarVistaListaMembros();
+    carregarListaMembros();
+  });
+  el('btn-ficha-guardar')?.addEventListener('click', () => guardarFichaMembro());
+  const cpfFicha = el('ficha-cpf');
+  if (cpfFicha) {
+    cpfFicha.addEventListener('input', () => {
+      const d = apenasDigitosCpf(cpfFicha.value);
+      cpfFicha.value = d ? formatarCpfMascara(d) : '';
     });
   }
 }

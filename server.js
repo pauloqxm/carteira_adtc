@@ -380,11 +380,71 @@ async function carregarMembrosPorIds(ids) {
   const { data: mems, error } = await supabaseAdmin
     .from('membros')
     .select(
-      'id, nome_completo, cod_membro, cpf, data_nasc, nacionalidade, estado_civil, data_batismo, cargo, sexo',
+      'id, nome_completo, cod_membro, cpf, data_nasc, nacionalidade, estado_civil, data_batismo, cargo, sexo, congregacao, situacao_membro',
     )
     .in('id', ids);
   if (error) throw error;
   return Object.fromEntries((mems || []).map((m) => [m.id, m]));
+}
+
+function incrementarContagem(map, chave) {
+  const k = chave || '—';
+  map.set(k, (map.get(k) || 0) + 1);
+}
+
+function contagensOrdenadas(map, { top = null, labelVazio = 'Sem valor' } = {}) {
+  const itens = [...map.entries()].map(([chave, total]) => ({
+    chave: chave === '—' ? labelVazio : chave,
+    total,
+  }));
+  itens.sort((a, b) => b.total - a.total || String(a.chave).localeCompare(String(b.chave), 'pt'));
+  if (top == null || itens.length <= top) return itens;
+  const principais = itens.slice(0, top);
+  const resto = itens.slice(top).reduce((acc, x) => acc + x.total, 0);
+  if (resto > 0) principais.push({ chave: 'Outros', total: resto });
+  return principais;
+}
+
+function idadeEmAnos(dataNascIso, ref = new Date()) {
+  if (!dataNascIso) return null;
+  const d = new Date(`${String(dataNascIso).slice(0, 10)}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return null;
+  let idade = ref.getFullYear() - d.getFullYear();
+  const m = ref.getMonth() - d.getMonth();
+  if (m < 0 || (m === 0 && ref.getDate() < d.getDate())) idade -= 1;
+  return idade >= 0 && idade < 130 ? idade : null;
+}
+
+function faixaEtaria(idade) {
+  if (idade == null) return 'Sem data';
+  if (idade <= 12) return 'Crianças (0-12)';
+  if (idade <= 17) return 'Adolescentes (13-17)';
+  if (idade <= 29) return 'Jovens (18-29)';
+  if (idade <= 59) return 'Adultos (30-59)';
+  return 'Idosos (60+)';
+}
+
+async function contarCarteirasTotais() {
+  const contarStatus = (st) =>
+    supabaseAdmin
+      .from('solicitacoes')
+      .select('id', { count: 'exact', head: true })
+      .eq('status_solicitacao', st);
+  const [pendenteRes, aprovadaRes, rejeitadaRes, emitidaRes] = await Promise.all([
+    contarStatus('pendente'),
+    contarStatus('aprovada'),
+    contarStatus('rejeitada'),
+    supabaseAdmin
+      .from('solicitacoes')
+      .select('id', { count: 'exact', head: true })
+      .not('emitida_em', 'is', null),
+  ]);
+  return {
+    pendente: pendenteRes.error ? 0 : pendenteRes.count ?? 0,
+    aprovada: aprovadaRes.error ? 0 : aprovadaRes.count ?? 0,
+    rejeitada: rejeitadaRes.error ? 0 : rejeitadaRes.count ?? 0,
+    emitida: emitidaRes.error ? 0 : emitidaRes.count ?? 0,
+  };
 }
 
 app.get('/api/admin/carteiras-emitidas', requireAdmin, async (req, res) => {
@@ -608,6 +668,192 @@ function parseOptionalText(val) {
   return s.length ? s : null;
 }
 
+const MEMBROS_LIST_SELECT =
+  'id, cod_membro, nome_completo, cpf, data_nasc, nacionalidade, estado_civil, data_batismo, cargo, sexo, congregacao, situacao_membro, created_at';
+
+app.get('/api/admin/membros/dashboard', requireAdmin, async (req, res) => {
+  if (!supabaseAdmin) {
+    return res.status(500).json({ mensagem: 'Servidor sem credencial Supabase.' });
+  }
+  try {
+    const [{ data: rows, error }, carteiras] = await Promise.all([
+      supabaseAdmin
+        .from('membros')
+        .select('sexo, situacao_membro, congregacao, cargo, data_nasc, data_batismo'),
+      contarCarteirasTotais(),
+    ]);
+    if (error) {
+      console.error(error);
+      return res.status(500).json({ mensagem: 'Erro ao carregar dashboard de membros.' });
+    }
+    const lista = rows || [];
+    const porSexo = new Map();
+    const porSituacao = new Map();
+    const porCongregacao = new Map();
+    const porCargo = new Map();
+    const porFaixa = new Map([
+      ['Crianças (0-12)', 0],
+      ['Adolescentes (13-17)', 0],
+      ['Jovens (18-29)', 0],
+      ['Adultos (30-59)', 0],
+      ['Idosos (60+)', 0],
+      ['Sem data', 0],
+    ]);
+    const batismosPorAno = new Map();
+    const agora = new Date();
+
+    for (const m of lista) {
+      incrementarContagem(porSexo, String(m.sexo || '').trim() || '—');
+      incrementarContagem(porSituacao, String(m.situacao_membro || '').trim() || '—');
+      incrementarContagem(porCongregacao, String(m.congregacao || '').trim() || '—');
+      incrementarContagem(porCargo, String(m.cargo || '').trim() || '—');
+      const faixa = faixaEtaria(idadeEmAnos(m.data_nasc, agora));
+      porFaixa.set(faixa, (porFaixa.get(faixa) || 0) + 1);
+      const anoBat = m.data_batismo ? String(m.data_batismo).slice(0, 4) : '';
+      if (/^\d{4}$/.test(anoBat)) {
+        batismosPorAno.set(anoBat, (batismosPorAno.get(anoBat) || 0) + 1);
+      }
+    }
+
+    const faixasOrdem = [
+      'Crianças (0-12)',
+      'Adolescentes (13-17)',
+      'Jovens (18-29)',
+      'Adultos (30-59)',
+      'Idosos (60+)',
+      'Sem data',
+    ];
+    const batismos = [...batismosPorAno.entries()]
+      .map(([ano, total]) => ({ ano, total }))
+      .sort((a, b) => Number(a.ano) - Number(b.ano));
+
+    res.json({
+      total: lista.length,
+      por_sexo: contagensOrdenadas(porSexo, { labelVazio: 'Não informado' }),
+      por_situacao: contagensOrdenadas(porSituacao, { labelVazio: 'Sem situação' }),
+      por_congregacao: contagensOrdenadas(porCongregacao, { top: 12, labelVazio: 'Sem congregação' }),
+      por_cargo: contagensOrdenadas(porCargo, { top: 10, labelVazio: 'Sem cargo' }),
+      faixas_etarias: faixasOrdem.map((chave) => ({ chave, total: porFaixa.get(chave) || 0 })),
+      batismos_por_ano: batismos,
+      carteiras,
+    });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ mensagem: 'Erro ao montar dashboard de membros.' });
+  }
+});
+
+app.get('/api/admin/membros', requireAdmin, async (req, res) => {
+  if (!supabaseAdmin) {
+    return res.status(500).json({ mensagem: 'Servidor sem credencial Supabase.' });
+  }
+  const page = Math.max(1, parseInt(String(req.query.page || '1'), 10) || 1);
+  const limitRaw = parseInt(String(req.query.limit || '50'), 10) || 50;
+  const limit = Math.min(100, Math.max(10, limitRaw));
+  const from = (page - 1) * limit;
+  const to = from + limit - 1;
+  const q = String(req.query.q || '').trim();
+  const congregacao = String(req.query.congregacao || '').trim();
+  const situacao = String(req.query.situacao || '').trim();
+
+  let query = supabaseAdmin
+    .from('membros')
+    .select(MEMBROS_LIST_SELECT, { count: 'exact' })
+    .order('nome_completo', { ascending: true })
+    .range(from, to);
+
+  if (congregacao === '__vazio__') {
+    query = query.or('congregacao.is.null,congregacao.eq.');
+  } else if (congregacao) {
+    query = query.eq('congregacao', congregacao);
+  }
+  if (situacao === '__vazio__') {
+    query = query.or('situacao_membro.is.null,situacao_membro.eq.');
+  } else if (situacao) {
+    query = query.eq('situacao_membro', situacao);
+  }
+
+  if (q) {
+    const digits = apenasDigitosCpf(q);
+    const cod = parseInt(q, 10);
+    const filtros = [`nome_completo.ilike.%${q.replace(/[%_,]/g, '')}%`];
+    if (digits.length >= 3) filtros.push(`cpf.ilike.%${digits}%`);
+    if (Number.isInteger(cod) && String(cod) === q.replace(/\s/g, '')) {
+      filtros.push(`cod_membro.eq.${cod}`);
+    }
+    query = query.or(filtros.join(','));
+  }
+
+  const { data, error, count } = await query;
+  if (error) {
+    console.error(error);
+    return res.status(500).json({ mensagem: 'Erro ao listar membros.' });
+  }
+  const total = count ?? 0;
+  res.json({
+    itens: data || [],
+    page,
+    limit,
+    total,
+    pages: Math.max(1, Math.ceil(total / limit)),
+  });
+});
+
+app.get('/api/admin/membros/filtros', requireAdmin, async (req, res) => {
+  if (!supabaseAdmin) {
+    return res.status(500).json({ mensagem: 'Servidor sem credencial Supabase.' });
+  }
+  const { data, error } = await supabaseAdmin.from('membros').select('congregacao, situacao_membro');
+  if (error) {
+    console.error(error);
+    return res.status(500).json({ mensagem: 'Erro ao carregar filtros.' });
+  }
+  const cong = new Set();
+  const sit = new Set();
+  for (const row of data || []) {
+    const c = String(row.congregacao || '').trim();
+    const s = String(row.situacao_membro || '').trim();
+    if (c) cong.add(c);
+    if (s) sit.add(s);
+  }
+  res.json({
+    congregacoes: [...cong].sort((a, b) => a.localeCompare(b, 'pt')),
+    situacoes: [...sit].sort((a, b) => a.localeCompare(b, 'pt')),
+  });
+});
+
+app.get('/api/admin/membros/:id', requireAdmin, async (req, res) => {
+  if (!supabaseAdmin) {
+    return res.status(500).json({ mensagem: 'Servidor sem credencial Supabase.' });
+  }
+  const { id } = req.params;
+  if (!UUID_RE.test(id)) {
+    return res.status(400).json({ mensagem: 'ID de membro inválido.' });
+  }
+  const { data: membro, error } = await supabaseAdmin
+    .from('membros')
+    .select(MEMBROS_LIST_SELECT)
+    .eq('id', id)
+    .maybeSingle();
+  if (error) {
+    console.error(error);
+    return res.status(500).json({ mensagem: 'Erro ao carregar membro.' });
+  }
+  if (!membro) {
+    return res.status(404).json({ mensagem: 'Membro não encontrado.' });
+  }
+  const { data: sols, error: eSol } = await supabaseAdmin
+    .from('solicitacoes')
+    .select('id, protocolo, status_solicitacao, foto_url, created_at, emitida_em, congregacao_nome')
+    .eq('membro_id', id)
+    .order('created_at', { ascending: false });
+  if (eSol) {
+    console.error(eSol);
+    return res.status(500).json({ mensagem: 'Erro ao carregar solicitações do membro.' });
+  }
+  res.json({ membro, solicitacoes: sols || [] });
+});
+
 app.patch('/api/admin/membros/:id', requireAdmin, async (req, res) => {
   if (!supabaseAdmin) {
     return res.status(500).json({ mensagem: 'Servidor sem credencial Supabase.' });
@@ -663,6 +909,12 @@ app.patch('/api/admin/membros/:id', requireAdmin, async (req, res) => {
   }
   if (Object.prototype.hasOwnProperty.call(body, 'sexo')) {
     patch.sexo = parseOptionalText(body.sexo);
+  }
+  if (Object.prototype.hasOwnProperty.call(body, 'congregacao')) {
+    patch.congregacao = parseOptionalText(body.congregacao);
+  }
+  if (Object.prototype.hasOwnProperty.call(body, 'situacao_membro')) {
+    patch.situacao_membro = parseOptionalText(body.situacao_membro);
   }
   if (Object.prototype.hasOwnProperty.call(body, 'cod_membro')) {
     const c = Number(body.cod_membro);
