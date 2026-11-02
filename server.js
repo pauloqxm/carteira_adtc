@@ -760,6 +760,51 @@ app.get('/api/admin/membros/dashboard', requireAdmin, async (req, res) => {
   }
 });
 
+function aplicarFiltrosMembrosQuery(query, { q, congregacao, situacao, cargo }) {
+  let qy = query;
+  if (congregacao === '__vazio__') {
+    qy = qy.or('congregacao.is.null,congregacao.eq.');
+  } else if (congregacao) {
+    qy = qy.eq('congregacao', congregacao);
+  }
+  if (situacao === '__vazio__') {
+    qy = qy.or('situacao_membro.is.null,situacao_membro.eq.');
+  } else if (situacao) {
+    qy = qy.eq('situacao_membro', situacao);
+  }
+  if (cargo === '__vazio__') {
+    qy = qy.or('cargo.is.null,cargo.eq.');
+  } else if (cargo) {
+    qy = qy.eq('cargo', cargo);
+  }
+  if (q) {
+    const digits = apenasDigitosCpf(q);
+    const cod = parseInt(q, 10);
+    const filtros = [`nome_completo.ilike.%${q.replace(/[%_,]/g, '')}%`];
+    if (digits.length >= 3) filtros.push(`cpf.ilike.%${digits}%`);
+    if (Number.isInteger(cod) && String(cod) === q.replace(/\s/g, '')) {
+      filtros.push(`cod_membro.eq.${cod}`);
+    }
+    qy = qy.or(filtros.join(','));
+  }
+  return qy;
+}
+
+function lerFiltrosMembrosReq(req) {
+  return {
+    q: String(req.query.q || '').trim(),
+    congregacao: String(req.query.congregacao || '').trim(),
+    situacao: String(req.query.situacao || '').trim(),
+    cargo: String(req.query.cargo || '').trim(),
+  };
+}
+
+function csvEscapeCell(val) {
+  const s = val == null ? '' : String(val);
+  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+
 app.get('/api/admin/membros', requireAdmin, async (req, res) => {
   if (!supabaseAdmin) {
     return res.status(500).json({ mensagem: 'Servidor sem credencial Supabase.' });
@@ -769,37 +814,14 @@ app.get('/api/admin/membros', requireAdmin, async (req, res) => {
   const limit = Math.min(100, Math.max(10, limitRaw));
   const from = (page - 1) * limit;
   const to = from + limit - 1;
-  const q = String(req.query.q || '').trim();
-  const congregacao = String(req.query.congregacao || '').trim();
-  const situacao = String(req.query.situacao || '').trim();
+  const filtros = lerFiltrosMembrosReq(req);
 
   let query = supabaseAdmin
     .from('membros')
     .select(MEMBROS_LIST_SELECT, { count: 'exact' })
     .order('nome_completo', { ascending: true })
     .range(from, to);
-
-  if (congregacao === '__vazio__') {
-    query = query.or('congregacao.is.null,congregacao.eq.');
-  } else if (congregacao) {
-    query = query.eq('congregacao', congregacao);
-  }
-  if (situacao === '__vazio__') {
-    query = query.or('situacao_membro.is.null,situacao_membro.eq.');
-  } else if (situacao) {
-    query = query.eq('situacao_membro', situacao);
-  }
-
-  if (q) {
-    const digits = apenasDigitosCpf(q);
-    const cod = parseInt(q, 10);
-    const filtros = [`nome_completo.ilike.%${q.replace(/[%_,]/g, '')}%`];
-    if (digits.length >= 3) filtros.push(`cpf.ilike.%${digits}%`);
-    if (Number.isInteger(cod) && String(cod) === q.replace(/\s/g, '')) {
-      filtros.push(`cod_membro.eq.${cod}`);
-    }
-    query = query.or(filtros.join(','));
-  }
+  query = aplicarFiltrosMembrosQuery(query, filtros);
 
   const { data, error, count } = await query;
   if (error) {
@@ -816,26 +838,80 @@ app.get('/api/admin/membros', requireAdmin, async (req, res) => {
   });
 });
 
+app.get('/api/admin/membros/export', requireAdmin, async (req, res) => {
+  if (!supabaseAdmin) {
+    return res.status(500).json({ mensagem: 'Servidor sem credencial Supabase.' });
+  }
+  const filtros = lerFiltrosMembrosReq(req);
+  const formato = String(req.query.formato || 'csv').trim().toLowerCase();
+  let query = supabaseAdmin
+    .from('membros')
+    .select(MEMBROS_LIST_SELECT)
+    .order('nome_completo', { ascending: true })
+    .limit(5000);
+  query = aplicarFiltrosMembrosQuery(query, filtros);
+  const { data, error } = await query;
+  if (error) {
+    console.error(error);
+    return res.status(500).json({ mensagem: 'Erro ao exportar membros.' });
+  }
+  const cols = [
+    'cod_membro',
+    'nome_completo',
+    'cpf',
+    'whatsapp_telefone',
+    'congregacao',
+    'situacao_membro',
+    'sexo',
+    'cargo',
+    'data_nasc',
+    'data_batismo',
+    'nacionalidade',
+    'estado_civil',
+  ];
+  const linhas = (data || []).map((row) => {
+    const o = {};
+    for (const c of cols) o[c] = row[c] ?? '';
+    return o;
+  });
+  const stamp = new Date().toISOString().slice(0, 10);
+
+  if (formato === 'json') {
+    return res.json({ itens: linhas, total: linhas.length });
+  }
+
+  const header = cols.join(',');
+  const lines = linhas.map((row) => cols.map((c) => csvEscapeCell(row[c])).join(','));
+  const csv = `\uFEFF${header}\n${lines.join('\n')}`;
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="membros-${stamp}.csv"`);
+  res.send(csv);
+});
+
 app.get('/api/admin/membros/filtros', requireAdmin, async (req, res) => {
   if (!supabaseAdmin) {
     return res.status(500).json({ mensagem: 'Servidor sem credencial Supabase.' });
   }
-  const { data, error } = await supabaseAdmin.from('membros').select('congregacao, situacao_membro');
+  const { data, error } = await supabaseAdmin.from('membros').select('congregacao, situacao_membro, cargo');
   if (error) {
     console.error(error);
     return res.status(500).json({ mensagem: 'Erro ao carregar filtros.' });
   }
   const cong = new Set();
   const sit = new Set();
+  const cargos = new Set();
   for (const row of data || []) {
     const c = String(row.congregacao || '').trim();
     const s = String(row.situacao_membro || '').trim();
+    const cg = String(row.cargo || '').trim();
     if (c) cong.add(c);
     if (s) sit.add(s);
+    if (cg) cargos.add(cg);
   }
   res.json({
     congregacoes: [...cong].sort((a, b) => a.localeCompare(b, 'pt')),
     situacoes: [...sit].sort((a, b) => a.localeCompare(b, 'pt')),
+    cargos: [...cargos].sort((a, b) => a.localeCompare(b, 'pt')),
   });
 });
 

@@ -508,6 +508,33 @@
   font-size: 0.86rem;
 }
 
+button.admin-rank__row,
+button.admin-bars__row {
+  width: 100%;
+  margin: 0;
+  padding: 0.35rem 0.4rem;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+button.admin-rank__row:hover,
+button.admin-bars__row:hover {
+  border-color: var(--cor-prim-borda);
+  background: var(--cor-prim-suave);
+}
+
+button.admin-rank__row:focus-visible,
+button.admin-bars__row:focus-visible {
+  outline: 2px solid var(--cor-prim);
+  outline-offset: 1px;
+}
+
 .admin-rank__meta,
 .admin-bars__meta {
   display: flex;

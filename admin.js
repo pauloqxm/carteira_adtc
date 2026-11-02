@@ -1,5 +1,6 @@
 import { validarCpf, apenasDigitosCpf, formatarCpfMascara } from './validacao.js';
 import JSZip from 'https://esm.sh/jszip@3.10.1';
+import * as XLSX from 'https://esm.sh/xlsx@0.18.5';
 
 const STORAGE_KEY = 'carteira_admin_token';
 const MAX_PDFS_LOTE = 40;
@@ -962,7 +963,15 @@ function maxTotal(itens) {
   return Math.max(1, ...itens.map((x) => Number(x.total) || 0));
 }
 
-function renderBarras(containerId, itens, { alt = false, warn = false } = {}) {
+function valorFiltroDash(chave, tipo) {
+  const k = String(chave || '').trim();
+  if (!k || k === 'Outros') return null;
+  if (tipo === 'congregacao' && (k === 'Sem congregação' || k === '—')) return '__vazio__';
+  if (tipo === 'cargo' && (k === 'Sem cargo' || k === '—')) return '__vazio__';
+  return k;
+}
+
+function renderBarras(containerId, itens, { alt = false, warn = false, filtroTipo = null } = {}) {
   const box = el(containerId);
   if (!box) return;
   if (!itens?.length) {
@@ -977,13 +986,18 @@ function renderBarras(containerId, itens, { alt = false, warn = false } = {}) {
       let fillCls = 'admin-bars__fill';
       if (warn && idx === 1) fillCls += ' admin-bars__fill--warn';
       else if (alt && idx % 2 === 1) fillCls += ' admin-bars__fill--alt';
-      return `<div class="admin-bars__row">
+      const filtroVal = filtroTipo ? valorFiltroDash(item.chave, filtroTipo) : null;
+      const tag = filtroVal ? 'button' : 'div';
+      const attrs = filtroVal
+        ? ` type="button" class="admin-bars__row" data-filtro-tipo="${escapeHtml(filtroTipo)}" data-filtro-valor="${escapeHtml(filtroVal)}" title="Filtrar lista por este cargo"`
+        : ' class="admin-bars__row"';
+      return `<${tag}${attrs}>
         <div class="admin-bars__meta">
           <span class="admin-bars__nome">${escapeHtml(item.chave)}</span>
           <span class="admin-bars__total">${total}</span>
         </div>
         <div class="admin-bars__track"><span class="${fillCls}" style="width:${pct}%"></span></div>
-      </div>`;
+      </${tag}>`;
     })
     .join('');
 }
@@ -1000,13 +1014,18 @@ function renderRankingCongregacoes(itens) {
     .map((item) => {
       const total = Number(item.total) || 0;
       const pct = Math.round((total / max) * 100);
-      return `<div class="admin-rank__row">
+      const filtroVal = valorFiltroDash(item.chave, 'congregacao');
+      const tag = filtroVal ? 'button' : 'div';
+      const attrs = filtroVal
+        ? ` type="button" class="admin-rank__row" data-filtro-tipo="congregacao" data-filtro-valor="${escapeHtml(filtroVal)}" title="Filtrar lista por esta congregação"`
+        : ' class="admin-rank__row"';
+      return `<${tag}${attrs}>
         <div class="admin-rank__meta">
           <span class="admin-rank__nome">${escapeHtml(item.chave)}</span>
           <span class="admin-rank__total">${total}</span>
         </div>
         <div class="admin-rank__track"><span class="admin-rank__fill" style="width:${pct}%"></span></div>
-      </div>`;
+      </${tag}>`;
     })
     .join('');
 }
@@ -1063,9 +1082,48 @@ function renderDashboard(data) {
   renderBarras('dash-sexo', data?.por_sexo || [], { alt: true });
   renderBarras('dash-situacao', data?.por_situacao || [], { warn: true });
   renderBarras('dash-faixas', data?.faixas_etarias || []);
-  renderBarras('dash-cargos', data?.por_cargo || []);
+  renderBarras('dash-cargos', data?.por_cargo || [], { filtroTipo: 'cargo' });
   renderLinhaBatismos(data?.batismos_por_ano || []);
   renderDashCarteiras(data?.carteiras);
+}
+
+function aplicarFiltroDashboard(tipo, valor) {
+  if (!tipo || !valor) return;
+  membrosPage = 1;
+  if (tipo === 'congregacao') {
+    const sel = el('membros-filtro-cong');
+    if (sel) {
+      if (![...sel.options].some((o) => o.value === valor)) {
+        const opt = document.createElement('option');
+        opt.value = valor;
+        opt.textContent = valor === '__vazio__' ? 'Sem congregação' : valor;
+        sel.appendChild(opt);
+      }
+      sel.value = valor;
+    }
+  } else if (tipo === 'cargo') {
+    const sel = el('membros-filtro-cargo');
+    if (sel) {
+      if (![...sel.options].some((o) => o.value === valor)) {
+        const opt = document.createElement('option');
+        opt.value = valor;
+        opt.textContent = valor === '__vazio__' ? 'Sem cargo' : valor;
+        sel.appendChild(opt);
+      }
+      sel.value = valor;
+    }
+  }
+  carregarListaMembros();
+  el('gestao-vista-lista')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const tabela = el('tbody-membros');
+  if (tabela) {
+    setTimeout(() => {
+      document.querySelector('#gestao-vista-lista .admin-table-wrap')?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
+    }, 50);
+  }
 }
 
 async function carregarDashboardMembros() {
@@ -1116,8 +1174,104 @@ async function carregarFiltrosMembros() {
     const data = await api('/api/admin/membros/filtros');
     preencherSelectFiltro(el('membros-filtro-cong'), data.congregacoes, 'Todas', 'Sem congregação');
     preencherSelectFiltro(el('membros-filtro-sit'), data.situacoes, 'Todas', 'Sem situação');
+    preencherSelectFiltro(el('membros-filtro-cargo'), data.cargos, 'Todos', 'Sem cargo');
   } catch {
     /* filtros opcionais */
+  }
+}
+
+function paramsFiltroMembros() {
+  const params = new URLSearchParams();
+  const q = el('membros-q')?.value.trim() || '';
+  const cong = el('membros-filtro-cong')?.value || '';
+  const sit = el('membros-filtro-sit')?.value || '';
+  const cargo = el('membros-filtro-cargo')?.value || '';
+  if (q) params.set('q', q);
+  if (cong) params.set('congregacao', cong);
+  if (sit) params.set('situacao', sit);
+  if (cargo) params.set('cargo', cargo);
+  return params;
+}
+
+function descarregarBlob(blob, fname) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fname;
+  a.rel = 'noopener';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+async function exportarPlanilhaMembros(formato = 'csv') {
+  const msg = el('membros-lista-msg');
+  const btnCsv = el('btn-membros-export-csv');
+  const btnXlsx = el('btn-membros-export-xlsx');
+  if (msg) {
+    msg.hidden = true;
+    msg.classList.remove('admin-msg--ok');
+  }
+  if (btnCsv) btnCsv.disabled = true;
+  if (btnXlsx) btnXlsx.disabled = true;
+  const stamp = new Date().toISOString().slice(0, 10);
+  try {
+    const params = paramsFiltroMembros();
+    if (formato === 'xlsx') {
+      params.set('formato', 'json');
+      const data = await api(`/api/admin/membros/export?${params.toString()}`);
+      const itens = data.itens || [];
+      const ws = XLSX.utils.json_to_sheet(itens);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Membros');
+      const out = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+      descarregarBlob(
+        new Blob([out], {
+          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        }),
+        `membros-${stamp}.xlsx`,
+      );
+      if (msg) {
+        msg.textContent = `Excel descarregado (${itens.length} linha(s)).`;
+        msg.classList.add('admin-msg--ok');
+        msg.hidden = false;
+      }
+      return;
+    }
+
+    const qs = params.toString();
+    const res = await fetch(`/api/admin/membros/export${qs ? `?${qs}` : ''}`, {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      throw new Error(j.mensagem || `Erro ${res.status}`);
+    }
+    const blob = await res.blob();
+    const cd = res.headers.get('Content-Disposition') || '';
+    const m = cd.match(/filename="?([^"]+)"?/i);
+    const fname = m?.[1] || `membros-${stamp}.csv`;
+    descarregarBlob(blob, fname);
+    if (msg) {
+      msg.textContent = 'Planilha CSV descarregada.';
+      msg.classList.add('admin-msg--ok');
+      msg.hidden = false;
+    }
+  } catch (e) {
+    if (e.status === 401 || String(e.message).includes('Não autorizado')) {
+      setToken('');
+      mostrarLogin('Sessão expirada ou acesso inválido.', loginMode === 'password' ? 'pass' : 'token');
+      return;
+    }
+    if (msg) {
+      msg.textContent = e.message || 'Falha ao descarregar planilha.';
+      msg.classList.remove('admin-msg--ok');
+      msg.hidden = false;
+    }
+  } finally {
+    if (btnCsv) btnCsv.disabled = false;
+    if (btnXlsx) btnXlsx.disabled = false;
   }
 }
 
@@ -1164,15 +1318,9 @@ async function carregarListaMembros() {
     msg.classList.remove('admin-msg--ok');
   }
   if (tbody) tbody.innerHTML = '<tr><td colspan="7">Carregando…</td></tr>';
-  const params = new URLSearchParams();
+  const params = paramsFiltroMembros();
   params.set('page', String(membrosPage));
   params.set('limit', String(MEMBROS_LIMIT));
-  const q = el('membros-q')?.value.trim() || '';
-  const cong = el('membros-filtro-cong')?.value || '';
-  const sit = el('membros-filtro-sit')?.value || '';
-  if (q) params.set('q', q);
-  if (cong) params.set('congregacao', cong);
-  if (sit) params.set('situacao', sit);
   try {
     const data = await api(`/api/admin/membros?${params.toString()}`);
     membrosTotal = data.total ?? 0;
@@ -1487,6 +1635,8 @@ async function init() {
     carregarListaMembros();
   });
   el('btn-membros-atualizar')?.addEventListener('click', () => carregarGestaoMembros());
+  el('btn-membros-export-csv')?.addEventListener('click', () => exportarPlanilhaMembros('csv'));
+  el('btn-membros-export-xlsx')?.addEventListener('click', () => exportarPlanilhaMembros('xlsx'));
   el('membros-q')?.addEventListener('keydown', (ev) => {
     if (ev.key === 'Enter') {
       ev.preventDefault();
@@ -1501,6 +1651,21 @@ async function init() {
   el('membros-filtro-sit')?.addEventListener('change', () => {
     membrosPage = 1;
     carregarListaMembros();
+  });
+  el('membros-filtro-cargo')?.addEventListener('change', () => {
+    membrosPage = 1;
+    carregarListaMembros();
+  });
+
+  el('dash-congregacoes')?.addEventListener('click', (ev) => {
+    const btn = ev.target.closest('[data-filtro-tipo="congregacao"]');
+    if (!btn) return;
+    aplicarFiltroDashboard(btn.dataset.filtroTipo, btn.dataset.filtroValor);
+  });
+  el('dash-cargos')?.addEventListener('click', (ev) => {
+    const btn = ev.target.closest('[data-filtro-tipo="cargo"]');
+    if (!btn) return;
+    aplicarFiltroDashboard(btn.dataset.filtroTipo, btn.dataset.filtroValor);
   });
   el('btn-membros-prev')?.addEventListener('click', () => {
     if (membrosPage > 1) {

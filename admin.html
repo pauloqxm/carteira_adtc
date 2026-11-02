@@ -309,8 +309,21 @@
                 <option value="__vazio__">Sem situação</option>
               </select>
             </label>
+            <label class="campo campo--inline">
+              <span class="campo__label">Cargo</span>
+              <select id="membros-filtro-cargo" class="campo__input">
+                <option value="">Todos</option>
+                <option value="__vazio__">Sem cargo</option>
+              </select>
+            </label>
             <button type="button" id="btn-membros-buscar" class="btn btn--secundario btn--mini">Filtrar</button>
             <button type="button" id="btn-membros-atualizar" class="btn btn--fantasma btn--mini">Atualizar</button>
+            <button type="button" id="btn-membros-export-csv" class="btn btn--secundario btn--mini">
+              Descarregar CSV
+            </button>
+            <button type="button" id="btn-membros-export-xlsx" class="btn btn--primario btn--mini">
+              Descarregar Excel (XLSX)
+            </button>
           </div>
           <p id="membros-lista-msg" class="admin-msg" hidden></p>
           <div class="admin-table-wrap">
