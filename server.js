@@ -814,6 +814,27 @@ function dataIsoParaBr(val) {
   return `${m[3]}/${m[2]}/${m[1]}`;
 }
 
+const MEMBROS_SORT_COLS = new Set([
+  'cod_membro',
+  'nome_completo',
+  'congregacao',
+  'situacao_membro',
+  'whatsapp_telefone',
+  'sexo',
+  'cargo',
+  'data_nasc',
+  'data_batismo',
+  'cpf',
+]);
+
+function lerOrdenacaoMembrosReq(req) {
+  const sortRaw = String(req.query.sort || 'nome_completo').trim();
+  const sort = MEMBROS_SORT_COLS.has(sortRaw) ? sortRaw : 'nome_completo';
+  const orderRaw = String(req.query.order || 'asc').trim().toLowerCase();
+  const ascending = orderRaw !== 'desc';
+  return { sort, ascending, order: ascending ? 'asc' : 'desc' };
+}
+
 app.get('/api/admin/membros', requireAdmin, async (req, res) => {
   if (!supabaseAdmin) {
     return res.status(500).json({ mensagem: 'Servidor sem credencial Supabase.' });
@@ -824,11 +845,12 @@ app.get('/api/admin/membros', requireAdmin, async (req, res) => {
   const from = (page - 1) * limit;
   const to = from + limit - 1;
   const filtros = lerFiltrosMembrosReq(req);
+  const { sort, ascending, order } = lerOrdenacaoMembrosReq(req);
 
   let query = supabaseAdmin
     .from('membros')
     .select(MEMBROS_LIST_SELECT, { count: 'exact' })
-    .order('nome_completo', { ascending: true })
+    .order(sort, { ascending, nullsFirst: false })
     .range(from, to);
   query = aplicarFiltrosMembrosQuery(query, filtros);
 
@@ -844,6 +866,8 @@ app.get('/api/admin/membros', requireAdmin, async (req, res) => {
     limit,
     total,
     pages: Math.max(1, Math.ceil(total / limit)),
+    sort,
+    order,
   });
 });
 
@@ -852,11 +876,12 @@ app.get('/api/admin/membros/export', requireAdmin, async (req, res) => {
     return res.status(500).json({ mensagem: 'Servidor sem credencial Supabase.' });
   }
   const filtros = lerFiltrosMembrosReq(req);
+  const { sort, ascending } = lerOrdenacaoMembrosReq(req);
   const formato = String(req.query.formato || 'csv').trim().toLowerCase();
   let query = supabaseAdmin
     .from('membros')
     .select(MEMBROS_LIST_SELECT)
-    .order('nome_completo', { ascending: true })
+    .order(sort, { ascending, nullsFirst: false })
     .limit(5000);
   query = aplicarFiltrosMembrosQuery(query, filtros);
   const { data, error } = await query;

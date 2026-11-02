@@ -14,6 +14,8 @@ let listaEmitidasAtual = [];
 let membrosPage = 1;
 let membrosPages = 1;
 let membrosTotal = 0;
+let membrosSort = 'nome_completo';
+let membrosOrder = 'asc';
 const MEMBROS_LIMIT = 50;
 
 /** Cache do último PDF gerado `{ chave, blob, fname }` (evita gerar duas vezes ao visualizar e descarregar). */
@@ -1190,7 +1192,35 @@ function paramsFiltroMembros() {
   if (cong) params.set('congregacao', cong);
   if (sit) params.set('situacao', sit);
   if (cargo) params.set('cargo', cargo);
+  params.set('sort', membrosSort);
+  params.set('order', membrosOrder);
   return params;
+}
+
+function atualizarIndicadoresOrdenacao() {
+  document.querySelectorAll('#tabela-membros .admin-th-sort').forEach((btn) => {
+    const col = btn.dataset.sort;
+    btn.classList.toggle('admin-th-sort--active', col === membrosSort);
+    btn.dataset.order = col === membrosSort ? membrosOrder : '';
+    const base = btn.textContent.replace(/\s*[↑↓]\s*$/, '').trim();
+    if (col === membrosSort) {
+      btn.textContent = `${base} ${membrosOrder === 'asc' ? '↑' : '↓'}`;
+    } else {
+      btn.textContent = base;
+    }
+  });
+}
+
+function alternarOrdenacaoMembros(col) {
+  if (!col) return;
+  if (membrosSort === col) {
+    membrosOrder = membrosOrder === 'asc' ? 'desc' : 'asc';
+  } else {
+    membrosSort = col;
+    membrosOrder = 'asc';
+  }
+  membrosPage = 1;
+  carregarListaMembros();
 }
 
 function descarregarBlob(blob, fname) {
@@ -1326,8 +1356,11 @@ async function carregarListaMembros() {
     membrosTotal = data.total ?? 0;
     membrosPages = data.pages ?? 1;
     membrosPage = data.page ?? 1;
+    if (data.sort) membrosSort = data.sort;
+    if (data.order) membrosOrder = data.order;
     renderTabelaMembros(data.itens);
     atualizarPaginacaoMembros();
+    atualizarIndicadoresOrdenacao();
   } catch (e) {
     if (tbody) tbody.innerHTML = '';
     if (e.status === 401) {
@@ -1637,6 +1670,12 @@ async function init() {
   el('btn-membros-atualizar')?.addEventListener('click', () => carregarGestaoMembros());
   el('btn-membros-export-csv')?.addEventListener('click', () => exportarPlanilhaMembros('csv'));
   el('btn-membros-export-xlsx')?.addEventListener('click', () => exportarPlanilhaMembros('xlsx'));
+  el('tabela-membros')?.addEventListener('click', (ev) => {
+    const btn = ev.target.closest('.admin-th-sort');
+    if (!btn) return;
+    alternarOrdenacaoMembros(btn.dataset.sort);
+  });
+  atualizarIndicadoresOrdenacao();
   el('membros-q')?.addEventListener('keydown', (ev) => {
     if (ev.key === 'Enter') {
       ev.preventDefault();

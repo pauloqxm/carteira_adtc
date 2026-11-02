@@ -327,16 +327,30 @@
           </div>
           <p id="membros-lista-msg" class="admin-msg" hidden></p>
           <div class="admin-table-wrap">
-            <table class="admin-table">
+            <table class="admin-table" id="tabela-membros">
               <thead>
                 <tr>
-                  <th>Código</th>
-                  <th>Nome</th>
-                  <th>Congregação</th>
-                  <th>Situação</th>
-                  <th>Telefone</th>
-                  <th>Sexo</th>
-                  <th>Cargo</th>
+                  <th>
+                    <button type="button" class="admin-th-sort" data-sort="cod_membro">Código</button>
+                  </th>
+                  <th>
+                    <button type="button" class="admin-th-sort" data-sort="nome_completo">Nome</button>
+                  </th>
+                  <th>
+                    <button type="button" class="admin-th-sort" data-sort="congregacao">Congregação</button>
+                  </th>
+                  <th>
+                    <button type="button" class="admin-th-sort" data-sort="situacao_membro">Situação</button>
+                  </th>
+                  <th>
+                    <button type="button" class="admin-th-sort" data-sort="whatsapp_telefone">Telefone</button>
+                  </th>
+                  <th>
+                    <button type="button" class="admin-th-sort" data-sort="sexo">Sexo</button>
+                  </th>
+                  <th>
+                    <button type="button" class="admin-th-sort" data-sort="cargo">Cargo</button>
+                  </th>
                 </tr>
               </thead>
               <tbody id="tbody-membros"></tbody>
