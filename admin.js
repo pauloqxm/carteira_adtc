@@ -145,7 +145,15 @@ function aplicarPermissoesUi() {
     if ('disabled' in node) node.disabled = !editar;
     node.hidden = !editar && node.dataset.ocultarSeConsulta === '1';
   });
+  atualizarBotaoExcluirFicha();
   atualizarTopoSessao();
+}
+
+function atualizarBotaoExcluirFicha() {
+  const btn = el('btn-ficha-excluir');
+  if (!btn) return;
+  const id = el('ficha-membro-id')?.value.trim() || '';
+  btn.hidden = !(podeExcluir() && id);
 }
 
 function formatarCpfExibicao(digitos) {
@@ -1869,6 +1877,7 @@ async function abrirFichaNovoMembro() {
     await carregarFiltrosMembros();
   }
   limparCamposFicha();
+  atualizarBotaoExcluirFicha();
   const prox = await sugerirProximoCodMembro();
   if (prox !== '') el('ficha-cod').value = String(prox);
   el('ficha-nome')?.focus();
@@ -1933,6 +1942,7 @@ async function abrirFichaMembro(id) {
     preencherSelectFicha(el('ficha-estado-civil'), [], m.estado_civil);
     preencherSelectFicha(el('ficha-cargo'), opcoesFichaMembros.cargos, m.cargo);
     setSexoSelect(el('ficha-sexo'), m.sexo);
+    atualizarBotaoExcluirFicha();
 
     const tbody = el('tbody-ficha-sols');
     tbody.innerHTML = '';
@@ -2070,6 +2080,60 @@ async function guardarFichaMembro() {
     msg.hidden = false;
   } finally {
     btn.disabled = false;
+  }
+}
+
+async function excluirCadastroMembro() {
+  const id = el('ficha-membro-id')?.value.trim() || '';
+  const msg = el('ficha-msg');
+  if (msg) {
+    msg.hidden = true;
+    msg.classList.remove('admin-msg--ok');
+  }
+  if (!podeExcluir()) {
+    if (msg) {
+      msg.textContent = 'Apenas Administrador pode excluir cadastros.';
+      msg.hidden = false;
+    }
+    return;
+  }
+  if (!id) return;
+
+  const nome = el('ficha-nome')?.value.trim() || el('ficha-titulo')?.textContent || 'este membro';
+  const nSols = el('tbody-ficha-sols')?.querySelectorAll('tr')?.length || 0;
+  const temSols =
+    nSols > 0 && !String(el('tbody-ficha-sols')?.textContent || '').includes('Nenhuma solicitação');
+  const avisoSols = temSols
+    ? ' Também serão excluídas as solicitações/carteiras ligadas a este membro.'
+    : '';
+  if (
+    !confirm(
+      `Excluir definitivamente o cadastro de "${nome}"?${avisoSols}\n\nEsta ação não pode ser desfeita.`,
+    )
+  ) {
+    return;
+  }
+
+  const btn = el('btn-ficha-excluir');
+  if (btn) btn.disabled = true;
+  try {
+    await api(`/api/admin/membros/${id}`, { method: 'DELETE' });
+    await Promise.all([carregarDashboardMembros(), carregarFiltrosMembros(), carregarListaMembros()]);
+    mostrarVistaListaMembros();
+    const listaMsg = el('membros-lista-msg');
+    if (listaMsg) {
+      listaMsg.textContent = 'Cadastro excluído.';
+      listaMsg.classList.add('admin-msg--ok');
+      listaMsg.hidden = false;
+    }
+  } catch (e) {
+    if (msg) {
+      msg.textContent = e.message || 'Falha ao excluir.';
+      msg.hidden = false;
+    }
+  } finally {
+    if (btn) btn.disabled = false;
+    atualizarBotaoExcluirFicha();
   }
 }
 
@@ -2313,6 +2377,7 @@ async function init() {
     carregarListaMembros();
   });
   el('btn-ficha-guardar')?.addEventListener('click', () => guardarFichaMembro());
+  el('btn-ficha-excluir')?.addEventListener('click', () => excluirCadastroMembro());
   const cpfFicha = el('ficha-cpf');
   if (cpfFicha) {
     cpfFicha.addEventListener('input', () => {

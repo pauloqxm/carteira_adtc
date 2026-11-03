@@ -1636,6 +1636,81 @@ app.patch('/api/admin/membros/:id', requireAdmin, requireAdminWrite, async (req,
   res.json({ ok: true, membro: data });
 });
 
+app.delete('/api/admin/membros/:id', requireAdmin, requireAdminDelete, async (req, res) => {
+  if (!supabaseAdmin) {
+    return res.status(500).json({ mensagem: 'Servidor sem credencial Supabase.' });
+  }
+  const { id } = req.params;
+  if (!UUID_RE.test(id)) {
+    return res.status(400).json({ mensagem: 'ID de membro inválido.' });
+  }
+
+  const { data: membro, error: eGet } = await supabaseAdmin
+    .from('membros')
+    .select('id, cod_membro, nome_completo, cpf, congregacao, cargo, situacao_membro')
+    .eq('id', id)
+    .maybeSingle();
+  if (eGet) {
+    console.error(eGet);
+    return res.status(500).json({ mensagem: 'Erro ao carregar o membro.' });
+  }
+  if (!membro) {
+    return res.status(404).json({ mensagem: 'Membro não encontrado.' });
+  }
+
+  const { data: sols, error: eSols } = await supabaseAdmin
+    .from('solicitacoes')
+    .select('id, protocolo')
+    .eq('membro_id', id);
+  if (eSols) {
+    console.error(eSols);
+    return res.status(500).json({ mensagem: 'Erro ao verificar solicitações do membro.' });
+  }
+  const solicitacoes = sols || [];
+  if (solicitacoes.length) {
+    const { error: eDelSols } = await supabaseAdmin.from('solicitacoes').delete().eq('membro_id', id);
+    if (eDelSols) {
+      console.error(eDelSols);
+      return res.status(500).json({
+        mensagem: 'Não foi possível excluir as solicitações ligadas a este membro.',
+      });
+    }
+  }
+
+  const { data: removido, error: eDel } = await supabaseAdmin
+    .from('membros')
+    .delete()
+    .eq('id', id)
+    .select('id')
+    .maybeSingle();
+  if (eDel) {
+    console.error(eDel);
+    return res.status(500).json({ mensagem: 'Erro ao excluir o membro.' });
+  }
+  if (!removido) {
+    return res.status(404).json({ mensagem: 'Membro não encontrado.' });
+  }
+
+  await registarAuditoria({
+    actor: req.adminUsername,
+    acao: 'membro.excluir',
+    entidade: 'membro',
+    entidade_id: id,
+    resumo: `Excluiu membro ${membro.nome_completo || membro.cod_membro || id}${
+      solicitacoes.length ? ` e ${solicitacoes.length} solicitação(ões)` : ''
+    }`,
+    antes: {
+      ...membro,
+      solicitacoes: solicitacoes.map((s) => ({ id: s.id, protocolo: s.protocolo })),
+    },
+    depois: null,
+  });
+  res.json({
+    ok: true,
+    solicitacoes_excluidas: solicitacoes.length,
+  });
+});
+
 function dataHojeBR() {
   const d = new Date();
   const dd = String(d.getDate()).padStart(2, '0');

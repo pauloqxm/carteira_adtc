@@ -497,8 +497,18 @@
             </select>
           </label>
         </div>
-        <div class="admin-modal__actions">
+        <div class="admin-modal__actions admin-modal__actions--ficha">
           <button type="button" id="btn-ficha-guardar" class="btn btn--primario" data-requer-editar data-ocultar-se-consulta="1">Guardar alterações</button>
+          <button
+            type="button"
+            id="btn-ficha-excluir"
+            class="btn btn--excluir btn--mini"
+            data-requer-admin
+            hidden
+            title="Excluir cadastro (somente Administrador)"
+          >
+            Excluir cadastro
+          </button>
         </div>
 
         <div id="ficha-bloco-sols">
@@ -575,6 +585,8 @@
               <option value="carteira.desfazer">Desfazer emissão</option>
               <option value="utilizador.criar">Criar utilizador</option>
               <option value="utilizador.atualizar">Atualizar utilizador</option>
+              <option value="membro.criar">Criar membro</option>
+              <option value="membro.excluir">Excluir membro</option>
             </select>
           </label>
           <label class="campo">
