@@ -258,10 +258,22 @@
               <h2 class="card__titulo">Dashboard</h2>
               <p class="card__texto card__texto--peq">Visão geral dos membros cadastrados.</p>
             </div>
-            <article class="admin-kpi admin-kpi--emitida admin-kpi--destaque">
-              <span class="admin-kpi__label">Membros</span>
-              <strong id="dash-total-membros" class="admin-kpi__valor">0</strong>
-            </article>
+            <div class="admin-gestao-topo__acoes">
+              <button
+                type="button"
+                id="btn-membro-novo-topo"
+                class="btn btn--primario btn--mini"
+                data-requer-editar
+                data-ocultar-se-consulta="1"
+                title="Cadastrar novo membro"
+              >
+                + Novo membro
+              </button>
+              <article class="admin-kpi admin-kpi--emitida admin-kpi--destaque">
+                <span class="admin-kpi__label">Membros</span>
+                <strong id="dash-total-membros" class="admin-kpi__valor">0</strong>
+              </article>
+            </div>
           </div>
           <p id="dash-msg" class="admin-msg" hidden></p>
           <div class="admin-dash-grid">
@@ -288,10 +300,6 @@
             <section class="admin-dash-card">
               <h3 class="admin-dash-card__titulo">Batismos por ano</h3>
               <div id="dash-batismos" class="admin-line"></div>
-            </section>
-            <section class="admin-dash-card admin-dash-card--wide">
-              <h3 class="admin-dash-card__titulo">Carteiras</h3>
-              <div class="admin-kpis admin-kpis--carteiras" id="dash-carteiras"></div>
             </section>
           </div>
         </section>

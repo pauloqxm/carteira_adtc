@@ -2255,6 +2255,7 @@ async function init() {
   });
   el('btn-membros-atualizar')?.addEventListener('click', () => carregarGestaoMembros());
   el('btn-membro-novo')?.addEventListener('click', () => abrirFichaNovoMembro());
+  el('btn-membro-novo-topo')?.addEventListener('click', () => abrirFichaNovoMembro());
   el('btn-membros-export-csv')?.addEventListener('click', () => exportarPlanilhaMembros('csv'));
   el('btn-membros-export-xlsx')?.addEventListener('click', () => exportarPlanilhaMembros('xlsx'));
   el('tabela-membros')?.addEventListener('click', (ev) => {
