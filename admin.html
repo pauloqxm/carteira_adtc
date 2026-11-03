@@ -28,7 +28,14 @@
           <p class="topo__sub" id="topo-sub">Escolha um módulo para continuar</p>
         </div>
       </div>
-      <button type="button" id="btn-sair-top" class="btn btn--fantasma btn-sair-top" hidden>Sair da sessão</button>
+      <div class="admin-header-acoes">
+        <div id="topo-sessao" class="topo-sessao" hidden>
+          <span class="topo-sessao__label">Acesso</span>
+          <strong id="topo-sessao-nome" class="topo-sessao__nome">—</strong>
+          <span id="topo-sessao-nivel" class="topo-sessao__nivel"></span>
+        </div>
+        <button type="button" id="btn-sair-top" class="btn btn--fantasma btn-sair-top" hidden>Sair da sessão</button>
+      </div>
     </div>
   </header>
 
@@ -67,7 +74,7 @@
       <h2 class="admin-hub__titulo">Módulos</h2>
       <p class="admin-hub__texto">Selecione a área em que deseja trabalhar.</p>
       <div class="admin-hub__grid">
-        <button type="button" class="admin-hub-card" id="hub-emissao" data-modulo="emissao">
+        <button type="button" class="admin-hub-card" id="hub-emissao" data-modulo="emissao" data-requer-editar data-ocultar-se-consulta="1">
           <span class="admin-hub-card__eyebrow">Credenciais</span>
           <strong class="admin-hub-card__titulo">Emissão de Credencial</strong>
           <span class="admin-hub-card__desc">

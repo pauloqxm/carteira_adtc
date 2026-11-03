@@ -4,6 +4,8 @@ import * as XLSX from 'https://esm.sh/xlsx@0.18.5';
 
 const STORAGE_KEY = 'carteira_admin_token';
 const STORAGE_NIVEL_KEY = 'carteira_admin_nivel';
+const STORAGE_USER_KEY = 'carteira_admin_user';
+const STORAGE_NOME_KEY = 'carteira_admin_nome';
 const MAX_PDFS_LOTE = 40;
 
 let loginMode = 'token';
@@ -57,6 +59,52 @@ function setNivelSessao(nivel) {
   document.body.dataset.nivelAdmin = n;
 }
 
+function getUsernameSessao() {
+  return String(sessionStorage.getItem(STORAGE_USER_KEY) || '').trim();
+}
+
+function getNomeSessao() {
+  return (
+    String(sessionStorage.getItem(STORAGE_NOME_KEY) || '').trim() ||
+    getUsernameSessao() ||
+    '—'
+  );
+}
+
+function setUtilizadorSessao({ username, nome, nome_exibicao } = {}) {
+  const user = String(username || '').trim();
+  const nomeExib =
+    String(nome || nome_exibicao || '').trim() || user;
+  if (user) sessionStorage.setItem(STORAGE_USER_KEY, user);
+  else sessionStorage.removeItem(STORAGE_USER_KEY);
+  if (nomeExib) sessionStorage.setItem(STORAGE_NOME_KEY, nomeExib);
+  else sessionStorage.removeItem(STORAGE_NOME_KEY);
+  atualizarTopoSessao();
+}
+
+function limparSessaoLocal() {
+  sessionStorage.removeItem(STORAGE_NIVEL_KEY);
+  sessionStorage.removeItem(STORAGE_USER_KEY);
+  sessionStorage.removeItem(STORAGE_NOME_KEY);
+  document.body.dataset.nivelAdmin = '';
+  atualizarTopoSessao();
+}
+
+function atualizarTopoSessao() {
+  const box = el('topo-sessao');
+  const nomeEl = el('topo-sessao-nome');
+  const nivelEl = el('topo-sessao-nivel');
+  if (!box || !nomeEl || !nivelEl) return;
+  const token = getToken();
+  if (!token) {
+    box.hidden = true;
+    return;
+  }
+  nomeEl.textContent = getNomeSessao();
+  nivelEl.textContent = `Nível: ${rotuloNivel(getNivelSessao())}`;
+  box.hidden = false;
+}
+
 function podeEditar() {
   const n = getNivelSessao();
   return n === 'editar' || n === 'administrador';
@@ -64,6 +112,10 @@ function podeEditar() {
 
 function podeExcluir() {
   return getNivelSessao() === 'administrador';
+}
+
+function podeAcessarEmissao() {
+  return podeEditar();
 }
 
 function rotuloNivel(nivel) {
@@ -93,6 +145,7 @@ function aplicarPermissoesUi() {
     if ('disabled' in node) node.disabled = !editar;
     node.hidden = !editar && node.dataset.ocultarSeConsulta === '1';
   });
+  atualizarTopoSessao();
 }
 
 function formatarCpfExibicao(digitos) {
@@ -218,6 +271,10 @@ function mostrarHub() {
 }
 
 function abrirModuloEmissao() {
+  if (!podeAcessarEmissao()) {
+    mostrarHub();
+    return;
+  }
   ocultarSecoesPainel();
   el('sec-painel').hidden = false;
   setSairVisivel(true);
@@ -641,14 +698,13 @@ function renderTabela(itens) {
 }
 
 function acoesLinha() {
-  const acoes = [
-    { label: 'Carteira', tipo: 'carteira', cls: 'btn--secundario' },
-  ];
+  const acoes = [];
   if (podeEditar()) {
-    acoes.unshift(
+    acoes.push(
       { label: 'Aprovar', tipo: 'patch', status: 'aprovada', cls: 'btn--primario' },
       { label: 'Rejeitar', tipo: 'patch', status: 'rejeitada', cls: 'btn--secundario' },
       { label: 'Editar', tipo: 'editar_membro', cls: 'btn--secundario' },
+      { label: 'Carteira', tipo: 'carteira', cls: 'btn--secundario' },
     );
   }
   if (podeExcluir()) {
@@ -1289,8 +1345,7 @@ function limparCamposLogin() {
 
 function sair() {
   setToken('');
-  sessionStorage.removeItem(STORAGE_NIVEL_KEY);
-  document.body.dataset.nivelAdmin = '';
+  limparSessaoLocal();
   limparCamposLogin();
   mostrarLogin();
 }
@@ -1839,19 +1894,23 @@ async function abrirFichaMembro(id) {
         tr.appendChild(tdE);
         const tdA = document.createElement('td');
         tdA.className = 'admin-acoes';
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'btn btn--mini btn--secundario';
-        btn.textContent = 'Carteira';
-        btn.addEventListener('click', () => {
-          abrirModuloEmissao();
-          switchTab('carteira');
-          invalidarCacheCarteiraPdf();
-          el('carteira-protocolo').value = s.protocolo || '';
-          el('carteira-solicitacao-id').value = s.id || '';
-          el('carteira-msg').hidden = true;
-        });
-        tdA.appendChild(btn);
+        if (podeAcessarEmissao()) {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'btn btn--mini btn--secundario';
+          btn.textContent = 'Carteira';
+          btn.addEventListener('click', () => {
+            abrirModuloEmissao();
+            switchTab('carteira');
+            invalidarCacheCarteiraPdf();
+            el('carteira-protocolo').value = s.protocolo || '';
+            el('carteira-solicitacao-id').value = s.id || '';
+            el('carteira-msg').hidden = true;
+          });
+          tdA.appendChild(btn);
+        } else {
+          tdA.textContent = '—';
+        }
         tr.appendChild(tdA);
         tbody.appendChild(tr);
       }
@@ -1931,6 +1990,11 @@ async function carregarConfigLogin() {
 async function carregarSessaoAdmin() {
   const sess = await api('/api/admin/sessao');
   setNivelSessao(sess.nivel || 'editar');
+  setUtilizadorSessao({
+    username: sess.username,
+    nome: sess.nome,
+    nome_exibicao: sess.nome_exibicao,
+  });
 }
 
 async function init() {
@@ -1948,7 +2012,7 @@ async function init() {
       mostrarHub();
     } catch {
       setToken('');
-      sessionStorage.removeItem(STORAGE_NIVEL_KEY);
+      limparSessaoLocal();
       mostrarLogin();
     }
   } else {
@@ -1969,17 +2033,23 @@ async function init() {
       return;
     }
     try {
-      const { token, nivel } = await api('/api/admin/login', {
+      const { token, nivel, username: userLogin } = await api('/api/admin/login', {
         method: 'POST',
         body: JSON.stringify({ username, password }),
         skipAuth: true,
       });
       setToken(token);
       setNivelSessao(nivel || 'editar');
+      setUtilizadorSessao({ username: userLogin || username });
+      try {
+        await carregarSessaoAdmin();
+      } catch {
+        /* mantém dados do login */
+      }
       mostrarHub();
     } catch (e) {
       setToken('');
-      sessionStorage.removeItem(STORAGE_NIVEL_KEY);
+      limparSessaoLocal();
       mostrarLogin(e.message || 'Erro ao entrar.', 'pass');
     }
   });
@@ -1995,7 +2065,7 @@ async function init() {
       await validarSessaoEEntrarNoHub();
     } catch (e) {
       setToken('');
-      sessionStorage.removeItem(STORAGE_NIVEL_KEY);
+      limparSessaoLocal();
       mostrarLogin(
         e.status === 401 || String(e.message).includes('Não autorizado')
           ? 'Token recusado pelo servidor.'

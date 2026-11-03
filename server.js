@@ -440,10 +440,23 @@ app.post('/api/admin/login', async (req, res) => {
   res.json({ token, username: auth.username, nivel });
 });
 
-app.get('/api/admin/sessao', requireAdmin, (req, res) => {
+app.get('/api/admin/sessao', requireAdmin, async (req, res) => {
+  const username = req.adminUsername || 'admin';
+  const nivel = normalizarNivelAdmin(req.adminNivel);
+  let nomeExibicao = null;
+  if (supabaseAdmin && username) {
+    const { data } = await supabaseAdmin
+      .from('admin_users')
+      .select('nome_exibicao')
+      .ilike('username', String(username).replace(/[%_]/g, ''))
+      .maybeSingle();
+    if (data?.nome_exibicao) nomeExibicao = String(data.nome_exibicao).trim() || null;
+  }
   res.json({
-    username: req.adminUsername || 'admin',
-    nivel: normalizarNivelAdmin(req.adminNivel),
+    username,
+    nome_exibicao: nomeExibicao,
+    nome: nomeExibicao || username,
+    nivel,
   });
 });
 
