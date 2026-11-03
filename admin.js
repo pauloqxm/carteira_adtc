@@ -1808,6 +1808,72 @@ async function carregarGestaoMembros() {
   await Promise.all([carregarDashboardMembros(), carregarFiltrosMembros(), carregarListaMembros()]);
 }
 
+function setCodigoFichaEditavel(editavel) {
+  const cod = el('ficha-cod');
+  if (!cod) return;
+  cod.readOnly = !editavel;
+  cod.tabIndex = editavel ? 0 : -1;
+  cod.classList.toggle('campo__input--bloqueado', !editavel);
+  cod.title = editavel ? 'Informe o código do novo membro' : 'Código não pode ser alterado';
+}
+
+function limparCamposFicha() {
+  el('ficha-membro-id').value = '';
+  el('ficha-nome').value = '';
+  el('ficha-cod').value = '';
+  el('ficha-cpf').value = '';
+  el('ficha-telefone').value = '';
+  el('ficha-situacao').value = 'ATIVO';
+  el('ficha-data-nasc').value = '';
+  el('ficha-data-batismo').value = '';
+  el('ficha-nacionalidade').value = 'BRASIL';
+  preencherSelectFicha(el('ficha-congregacao'), opcoesFichaMembros.congregacoes, '');
+  preencherSelectFicha(el('ficha-estado-civil'), [], '');
+  preencherSelectFicha(el('ficha-cargo'), opcoesFichaMembros.cargos, '');
+  setSexoSelect(el('ficha-sexo'), '');
+  const tbody = el('tbody-ficha-sols');
+  if (tbody) tbody.innerHTML = '';
+}
+
+async function sugerirProximoCodMembro() {
+  try {
+    const params = new URLSearchParams({
+      page: '1',
+      limit: '1',
+      sort: 'cod_membro',
+      order: 'desc',
+    });
+    const data = await api(`/api/admin/membros?${params}`);
+    const max = Number(data.itens?.[0]?.cod_membro);
+    return Number.isInteger(max) && max >= 1 ? max + 1 : 1;
+  } catch {
+    return '';
+  }
+}
+
+async function abrirFichaNovoMembro() {
+  if (!podeEditar()) return;
+  const msg = el('ficha-msg');
+  if (msg) {
+    msg.hidden = true;
+    msg.classList.remove('admin-msg--ok');
+  }
+  mostrarVistaFicha();
+  el('ficha-titulo').textContent = 'Novo membro';
+  const btnGuardar = el('btn-ficha-guardar');
+  if (btnGuardar) btnGuardar.textContent = 'Criar membro';
+  const blocoSols = el('ficha-bloco-sols');
+  if (blocoSols) blocoSols.hidden = true;
+  setCodigoFichaEditavel(true);
+  if (!opcoesFichaMembros.congregacoes.length) {
+    await carregarFiltrosMembros();
+  }
+  limparCamposFicha();
+  const prox = await sugerirProximoCodMembro();
+  if (prox !== '') el('ficha-cod').value = String(prox);
+  el('ficha-nome')?.focus();
+}
+
 function mostrarVistaListaMembros() {
   el('gestao-vista-lista').hidden = false;
   el('gestao-vista-ficha').hidden = true;
@@ -1840,6 +1906,11 @@ async function abrirFichaMembro(id) {
     msg.classList.remove('admin-msg--ok');
   }
   mostrarVistaFicha();
+  setCodigoFichaEditavel(false);
+  const blocoSols = el('ficha-bloco-sols');
+  if (blocoSols) blocoSols.hidden = false;
+  const btnGuardar = el('btn-ficha-guardar');
+  if (btnGuardar) btnGuardar.textContent = 'Guardar alterações';
   el('ficha-titulo').textContent = 'A carregar…';
   try {
     const data = await api(`/api/admin/membros/${id}`);
@@ -1929,7 +2000,11 @@ async function guardarFichaMembro() {
   const msg = el('ficha-msg');
   msg.hidden = true;
   msg.classList.remove('admin-msg--ok');
-  if (!id) return;
+  if (!podeEditar()) {
+    msg.textContent = 'A sua conta tem nível Consultar.';
+    msg.hidden = false;
+    return;
+  }
 
   const nome = el('ficha-nome').value.trim();
   if (nome.length < 2) {
@@ -1963,12 +2038,33 @@ async function guardarFichaMembro() {
   const btn = el('btn-ficha-guardar');
   btn.disabled = true;
   try {
-    await api(`/api/admin/membros/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
-    msg.textContent = 'Alterações guardadas.';
-    msg.classList.add('admin-msg--ok');
-    msg.hidden = false;
-    el('ficha-titulo').textContent = nome;
-    await Promise.all([carregarDashboardMembros(), carregarFiltrosMembros(), carregarListaMembros()]);
+    if (!id) {
+      const cod = parseInt(el('ficha-cod').value.trim(), 10);
+      if (!Number.isInteger(cod) || cod < 1) {
+        msg.textContent = 'Indique um código de membro válido.';
+        msg.hidden = false;
+        return;
+      }
+      body.cod_membro = cod;
+      const out = await api('/api/admin/membros', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      });
+      const novoId = out.membro?.id;
+      msg.textContent = 'Membro criado.';
+      msg.classList.add('admin-msg--ok');
+      msg.hidden = false;
+      el('ficha-titulo').textContent = nome;
+      await Promise.all([carregarDashboardMembros(), carregarFiltrosMembros(), carregarListaMembros()]);
+      if (novoId) await abrirFichaMembro(novoId);
+    } else {
+      await api(`/api/admin/membros/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
+      msg.textContent = 'Alterações guardadas.';
+      msg.classList.add('admin-msg--ok');
+      msg.hidden = false;
+      el('ficha-titulo').textContent = nome;
+      await Promise.all([carregarDashboardMembros(), carregarFiltrosMembros(), carregarListaMembros()]);
+    }
   } catch (e) {
     msg.textContent = e.message || 'Falha ao guardar.';
     msg.hidden = false;
@@ -2158,6 +2254,7 @@ async function init() {
     carregarListaMembros();
   });
   el('btn-membros-atualizar')?.addEventListener('click', () => carregarGestaoMembros());
+  el('btn-membro-novo')?.addEventListener('click', () => abrirFichaNovoMembro());
   el('btn-membros-export-csv')?.addEventListener('click', () => exportarPlanilhaMembros('csv'));
   el('btn-membros-export-xlsx')?.addEventListener('click', () => exportarPlanilhaMembros('xlsx'));
   el('tabela-membros')?.addEventListener('click', (ev) => {

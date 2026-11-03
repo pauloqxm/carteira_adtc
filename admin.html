@@ -332,6 +332,16 @@
             </label>
             <button type="button" id="btn-membros-buscar" class="btn btn--secundario btn--mini">Filtrar</button>
             <button type="button" id="btn-membros-atualizar" class="btn btn--fantasma btn--mini">Atualizar</button>
+            <button
+              type="button"
+              id="btn-membro-novo"
+              class="btn btn--primario btn--mini"
+              data-requer-editar
+              data-ocultar-se-consulta="1"
+              title="Cadastrar novo membro"
+            >
+              + Novo membro
+            </button>
             <button type="button" id="btn-membros-export-csv" class="btn btn--secundario btn--mini">
               Descarregar CSV
             </button>
@@ -483,20 +493,22 @@
           <button type="button" id="btn-ficha-guardar" class="btn btn--primario" data-requer-editar data-ocultar-se-consulta="1">Guardar alterações</button>
         </div>
 
-        <h3 class="admin-dash-card__titulo" style="margin-top: 1.5rem">Solicitações / carteiras</h3>
-        <div class="admin-table-wrap">
-          <table class="admin-table">
-            <thead>
-              <tr>
-                <th>Protocolo</th>
-                <th>Status</th>
-                <th>Criada em</th>
-                <th>Emitida em</th>
-                <th>Ações</th>
-              </tr>
-            </thead>
-            <tbody id="tbody-ficha-sols"></tbody>
-          </table>
+        <div id="ficha-bloco-sols">
+          <h3 class="admin-dash-card__titulo" style="margin-top: 1.5rem">Solicitações / carteiras</h3>
+          <div class="admin-table-wrap">
+            <table class="admin-table">
+              <thead>
+                <tr>
+                  <th>Protocolo</th>
+                  <th>Status</th>
+                  <th>Criada em</th>
+                  <th>Emitida em</th>
+                  <th>Ações</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-ficha-sols"></tbody>
+            </table>
+          </div>
         </div>
       </section>
     </div>

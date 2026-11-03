@@ -1428,6 +1428,90 @@ app.get('/api/admin/membros/:id', requireAdmin, async (req, res) => {
   res.json({ membro, solicitacoes: sols || [] });
 });
 
+app.post('/api/admin/membros', requireAdmin, requireAdminWrite, async (req, res) => {
+  if (!supabaseAdmin) {
+    return res.status(500).json({ mensagem: 'Servidor sem credencial Supabase.' });
+  }
+  const body = req.body && typeof req.body === 'object' ? req.body : {};
+  const nome = String(body.nome_completo ?? '').trim();
+  if (nome.length < 2) {
+    return res.status(400).json({ mensagem: 'Nome completo deve ter pelo menos 2 caracteres.' });
+  }
+  const cod = Number(body.cod_membro);
+  if (!Number.isInteger(cod) || cod < 1) {
+    return res.status(400).json({ mensagem: 'Código de membro inválido.' });
+  }
+  const { data: dupe, error: eDupe } = await supabaseAdmin
+    .from('membros')
+    .select('id')
+    .eq('cod_membro', cod)
+    .maybeSingle();
+  if (eDupe) {
+    console.error(eDupe);
+    return res.status(500).json({ mensagem: 'Erro ao validar código de membro.' });
+  }
+  if (dupe) {
+    return res.status(409).json({ mensagem: 'Já existe outro membro com este código.' });
+  }
+
+  let cpf = null;
+  if (Object.prototype.hasOwnProperty.call(body, 'cpf')) {
+    const d = apenasDigitosCpf(body.cpf);
+    if (d) {
+      const v = validarCpf(d);
+      if (!v.valido) {
+        return res.status(400).json({ mensagem: v.motivo || 'CPF inválido.' });
+      }
+      cpf = d;
+    }
+  }
+
+  const dataNasc = parseOptionalDateIso(body.data_nasc);
+  if (dataNasc === undefined) {
+    return res.status(400).json({ mensagem: 'Data de nascimento inválida (use AAAA-MM-DD).' });
+  }
+  const dataBatismo = parseOptionalDateIso(body.data_batismo);
+  if (dataBatismo === undefined) {
+    return res.status(400).json({ mensagem: 'Data de batismo inválida (use AAAA-MM-DD).' });
+  }
+  const telRaw = String(body.whatsapp_telefone ?? '').replace(/\D/g, '');
+
+  const row = {
+    nome_completo: nome,
+    cod_membro: cod,
+    cpf,
+    data_nasc: dataNasc,
+    data_batismo: dataBatismo,
+    nacionalidade: parseOptionalText(body.nacionalidade),
+    estado_civil: parseOptionalText(body.estado_civil),
+    cargo: parseOptionalText(body.cargo),
+    sexo: parseOptionalText(body.sexo),
+    congregacao: parseOptionalText(body.congregacao),
+    situacao_membro: parseOptionalText(body.situacao_membro) || 'ATIVO',
+    whatsapp_telefone: telRaw.length >= 8 ? telRaw : null,
+  };
+
+  const { data, error } = await supabaseAdmin.from('membros').insert(row).select().maybeSingle();
+  if (error) {
+    console.error(error);
+    if (error.code === '23505') {
+      return res.status(409).json({ mensagem: 'Já existe um membro com este código ou CPF.' });
+    }
+    return res.status(500).json({ mensagem: 'Erro ao criar o membro.' });
+  }
+
+  await registarAuditoria({
+    actor: req.adminUsername,
+    acao: 'membro.criar',
+    entidade: 'membro',
+    entidade_id: data?.id,
+    resumo: `Criou membro ${data?.nome_completo || nome} (código ${cod})`,
+    antes: null,
+    depois: data,
+  });
+  res.status(201).json({ ok: true, membro: data });
+});
+
 app.patch('/api/admin/membros/:id', requireAdmin, requireAdminWrite, async (req, res) => {
   if (!supabaseAdmin) {
     return res.status(500).json({ mensagem: 'Servidor sem credencial Supabase.' });
