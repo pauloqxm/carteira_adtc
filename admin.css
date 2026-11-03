@@ -688,6 +688,66 @@ button.admin-bars__row:focus-visible {
   color: var(--cor-texto-mudo);
 }
 
+.admin-ficha-layout {
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr);
+  gap: 1.25rem 1.5rem;
+  align-items: start;
+  margin-bottom: 0.25rem;
+}
+
+.admin-ficha-foto {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.admin-ficha-foto__moldura {
+  position: relative;
+  width: 120px;
+  aspect-ratio: 3 / 4;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--cor-borda);
+  background: var(--cor-painel-inset);
+}
+
+.admin-ficha-foto__img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.admin-ficha-foto__silhueta {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: stretch;
+  justify-content: stretch;
+  color: var(--cor-texto-mudo);
+}
+
+.admin-ficha-foto__silhueta[hidden],
+.admin-ficha-foto__img[hidden] {
+  display: none !important;
+}
+
+.admin-ficha-foto__silhueta svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.admin-ficha-foto__legenda {
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--cor-texto-mudo);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 .admin-ficha-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -802,9 +862,14 @@ body[data-nivel-admin='consultar'] #gestao-vista-ficha select.campo__input {
 
   .admin-hub__grid,
   .admin-dash-grid,
+  .admin-ficha-layout,
   .admin-ficha-grid,
   .admin-kpis--carteiras {
     grid-template-columns: 1fr;
+  }
+
+  .admin-ficha-foto {
+    justify-self: center;
   }
 }
 

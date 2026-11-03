@@ -405,7 +405,25 @@
         </div>
         <p id="ficha-msg" class="admin-msg" hidden></p>
         <input type="hidden" id="ficha-membro-id" value="" />
-        <div class="admin-ficha-grid">
+        <div class="admin-ficha-layout">
+          <aside class="admin-ficha-foto" aria-label="Foto do membro">
+            <div class="admin-ficha-foto__moldura">
+              <img id="ficha-foto" class="admin-ficha-foto__img" alt="Foto do membro" hidden />
+              <div id="ficha-foto-silhueta" class="admin-ficha-foto__silhueta" aria-hidden="true">
+                <svg viewBox="0 0 120 160" role="img" focusable="false">
+                  <rect width="120" height="160" fill="currentColor" opacity="0.08" />
+                  <circle cx="60" cy="52" r="26" fill="currentColor" opacity="0.35" />
+                  <path
+                    d="M20 148c6-28 24-42 40-42s34 14 40 42"
+                    fill="currentColor"
+                    opacity="0.35"
+                  />
+                </svg>
+              </div>
+            </div>
+            <p class="admin-ficha-foto__legenda">Foto 3×4</p>
+          </aside>
+          <div class="admin-ficha-grid">
           <label class="campo">
             <span class="campo__label">Nome completo</span>
             <input id="ficha-nome" class="campo__input" type="text" autocomplete="name" />
@@ -496,6 +514,7 @@
               <option value="Outro">Outro</option>
             </select>
           </label>
+          </div>
         </div>
         <div class="admin-modal__actions admin-modal__actions--ficha">
           <button type="button" id="btn-ficha-guardar" class="btn btn--primario" data-requer-editar data-ocultar-se-consulta="1">Guardar alterações</button>

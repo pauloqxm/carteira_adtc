@@ -1856,6 +1856,41 @@ function setSexoSelect(sel, valor) {
   } else sel.value = '';
 }
 
+function escolherFotoSolicitacoes(sols) {
+  const lista = Array.isArray(sols) ? sols : [];
+  const comFoto = lista
+    .map((s) => ({ ...s, foto: urlFoto(s.foto_url) }))
+    .filter((s) => s.foto);
+  if (!comFoto.length) return '';
+  const emitida = comFoto.find((s) => s.emitida_em);
+  if (emitida) return emitida.foto;
+  const aprovada = comFoto.find((s) => s.status_solicitacao === 'aprovada');
+  if (aprovada) return aprovada.foto;
+  return comFoto[0].foto;
+}
+
+function atualizarFotoFicha(url) {
+  const img = el('ficha-foto');
+  const sil = el('ficha-foto-silhueta');
+  if (!img || !sil) return;
+  const src = urlFoto(url);
+  img.onload = null;
+  img.onerror = () => {
+    img.removeAttribute('src');
+    img.hidden = true;
+    sil.hidden = false;
+  };
+  if (src) {
+    img.src = src;
+    img.hidden = false;
+    sil.hidden = true;
+  } else {
+    img.removeAttribute('src');
+    img.hidden = true;
+    sil.hidden = false;
+  }
+}
+
 async function abrirFichaMembro(id) {
   if (!id) return;
   const msg = el('ficha-msg');
@@ -1870,6 +1905,7 @@ async function abrirFichaMembro(id) {
   const btnGuardar = el('btn-ficha-guardar');
   if (btnGuardar) btnGuardar.textContent = 'Guardar alterações';
   el('ficha-titulo').textContent = 'A carregar…';
+  atualizarFotoFicha('');
   try {
     const data = await api(`/api/admin/membros/${id}`);
     const m = data.membro;
@@ -1896,6 +1932,7 @@ async function abrirFichaMembro(id) {
     const tbody = el('tbody-ficha-sols');
     tbody.innerHTML = '';
     const sols = data.solicitacoes || [];
+    atualizarFotoFicha(escolherFotoSolicitacoes(sols));
     if (!sols.length) {
       tbody.innerHTML = '<tr><td colspan="5">Nenhuma solicitação associada.</td></tr>';
     } else {
