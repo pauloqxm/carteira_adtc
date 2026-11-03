@@ -3,6 +3,7 @@ import JSZip from 'https://esm.sh/jszip@3.10.1';
 import * as XLSX from 'https://esm.sh/xlsx@0.18.5';
 
 const STORAGE_KEY = 'carteira_admin_token';
+const STORAGE_NIVEL_KEY = 'carteira_admin_nivel';
 const MAX_PDFS_LOTE = 40;
 
 let loginMode = 'token';
@@ -37,6 +38,58 @@ function getToken() {
 function setToken(t) {
   if (t) sessionStorage.setItem(STORAGE_KEY, t);
   else sessionStorage.removeItem(STORAGE_KEY);
+}
+
+function getNivelSessao() {
+  const n = String(sessionStorage.getItem(STORAGE_NIVEL_KEY) || 'editar').toLowerCase();
+  if (n === 'administrador' || n === 'consultar' || n === 'editar') return n;
+  return 'editar';
+}
+
+function setNivelSessao(nivel) {
+  const raw = String(nivel || 'editar').toLowerCase();
+  const n =
+    raw === 'administrador' || raw === 'consultar' || raw === 'editar' ? raw : 'editar';
+  sessionStorage.setItem(STORAGE_NIVEL_KEY, n);
+  document.body.dataset.nivelAdmin = n;
+}
+
+function podeEditar() {
+  const n = getNivelSessao();
+  return n === 'editar' || n === 'administrador';
+}
+
+function podeExcluir() {
+  return getNivelSessao() === 'administrador';
+}
+
+function rotuloNivel(nivel) {
+  const n = String(nivel || '').toLowerCase();
+  if (n === 'administrador') return 'Administrador';
+  if (n === 'consultar') return 'Consultar';
+  return 'Editar';
+}
+
+function badgeNivelHtml(nivel) {
+  const n = String(nivel || '').toLowerCase();
+  if (n === 'administrador') return '<span class="badge badge--emitida">Administrador</span>';
+  if (n === 'consultar') return '<span class="badge badge--pendente">Consultar</span>';
+  return '<span class="badge badge--aprovada">Editar</span>';
+}
+
+function valorSelectNivel(nivel) {
+  const n = String(nivel || 'editar').toLowerCase();
+  if (n === 'administrador' || n === 'consultar') return n;
+  return 'editar';
+}
+
+function aplicarPermissoesUi() {
+  const editar = podeEditar();
+  document.body.dataset.nivelAdmin = getNivelSessao();
+  document.querySelectorAll('[data-requer-editar]').forEach((node) => {
+    if ('disabled' in node) node.disabled = !editar;
+    node.hidden = !editar && node.dataset.ocultarSeConsulta === '1';
+  });
 }
 
 function formatarCpfExibicao(digitos) {
@@ -156,7 +209,9 @@ function mostrarHub() {
   ocultarSecoesPainel();
   el('sec-hub').hidden = false;
   setSairVisivel(true);
-  setTopoSub('Escolha um módulo para continuar');
+  const nivelTxt = rotuloNivel(getNivelSessao());
+  setTopoSub(`Escolha um módulo para continuar · Nível: ${nivelTxt}`);
+  aplicarPermissoesUi();
 }
 
 function abrirModuloEmissao() {
@@ -214,11 +269,13 @@ function fecharModalUtilizador() {
 }
 
 function abrirModalUtilizadorNovo() {
+  if (!podeEditar()) return;
   el('modal-user-titulo').textContent = 'Novo utilizador';
   el('user-edit-id').value = '';
   el('user-username').value = '';
   el('user-username').disabled = false;
   el('user-nome').value = '';
+  el('user-nivel').value = 'editar';
   el('user-senha').value = '';
   el('user-senha-label').textContent = 'Senha';
   el('user-ativo-wrap').hidden = true;
@@ -229,11 +286,13 @@ function abrirModalUtilizadorNovo() {
 }
 
 function abrirModalUtilizadorEditar(u) {
+  if (!podeEditar()) return;
   el('modal-user-titulo').textContent = 'Editar utilizador';
   el('user-edit-id').value = u.id;
   el('user-username').value = u.username || '';
   el('user-username').disabled = true;
   el('user-nome').value = u.nome_exibicao || '';
+  el('user-nivel').value = valorSelectNivel(u.nivel);
   el('user-senha').value = '';
   el('user-senha-label').textContent = 'Nova senha (opcional)';
   el('user-ativo-wrap').hidden = false;
@@ -246,31 +305,34 @@ function abrirModalUtilizadorEditar(u) {
 async function carregarUtilizadores() {
   const tbody = el('tbody-utilizadores');
   if (!tbody) return;
-  tbody.innerHTML = '<tr><td colspan="5">A carregar…</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="6">A carregar…</td></tr>';
   try {
     const data = await api('/api/admin/utilizadores');
     const itens = data.itens || [];
     if (!itens.length) {
       tbody.innerHTML =
-        '<tr><td colspan="5">Nenhum utilizador na base. Crie o primeiro aqui (login .env continua válido).</td></tr>';
+        '<tr><td colspan="6">Nenhum utilizador na base. Crie o primeiro aqui (login .env continua válido).</td></tr>';
       return;
     }
+    const editar = podeEditar();
     tbody.innerHTML = itens
       .map((u) => {
         const ativo = u.ativo
           ? '<span class="badge badge--aprovada">Sim</span>'
           : '<span class="badge badge--rejeitada">Não</span>';
+        const acoes = editar
+          ? `<button type="button" class="btn btn--fantasma btn--mini btn-user-editar" data-id="${escapeHtml(u.id)}">Editar</button>
+            <button type="button" class="btn btn--fantasma btn--mini btn-user-toggle" data-id="${escapeHtml(u.id)}" data-ativo="${u.ativo ? '1' : '0'}">${
+              u.ativo ? 'Desativar' : 'Ativar'
+            }</button>`
+          : '—';
         return `<tr>
           <td>${escapeHtml(u.username)}</td>
           <td>${escapeHtml(u.nome_exibicao || '—')}</td>
+          <td>${badgeNivelHtml(u.nivel)}</td>
           <td>${ativo}</td>
           <td>${escapeHtml(formatarData(u.created_at))}</td>
-          <td>
-            <button type="button" class="btn btn--fantasma btn--mini btn-user-editar" data-id="${escapeHtml(u.id)}">Editar</button>
-            <button type="button" class="btn btn--fantasma btn--mini btn-user-toggle" data-id="${escapeHtml(u.id)}" data-ativo="${u.ativo ? '1' : '0'}">${
-              u.ativo ? 'Desativar' : 'Ativar'
-            }</button>
-          </td>
+          <td>${acoes}</td>
         </tr>`;
       })
       .join('');
@@ -284,16 +346,22 @@ async function carregarUtilizadores() {
       btn.addEventListener('click', () => alternarAtivoUtilizador(btn.dataset.id, btn.dataset.ativo !== '1'));
     });
   } catch (e) {
-    tbody.innerHTML = `<tr><td colspan="5">${escapeHtml(e.message || 'Erro')}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6">${escapeHtml(e.message || 'Erro')}</td></tr>`;
   }
 }
 
 async function guardarUtilizador() {
   const msg = el('user-form-msg');
   msg.hidden = true;
+  if (!podeEditar()) {
+    msg.textContent = 'A sua conta tem nível Consultar.';
+    msg.hidden = false;
+    return;
+  }
   const id = el('user-edit-id').value.trim();
   const username = el('user-username').value.trim();
   const nome = el('user-nome').value.trim();
+  const nivel = valorSelectNivel(el('user-nivel').value);
   const senha = el('user-senha').value;
   try {
     if (!id) {
@@ -305,6 +373,7 @@ async function guardarUtilizador() {
           username,
           password: senha,
           nome_exibicao: nome || null,
+          nivel,
         }),
       });
       mostrarMsgUsers('Utilizador criado.', true);
@@ -312,6 +381,7 @@ async function guardarUtilizador() {
       const body = {
         nome_exibicao: nome || null,
         ativo: el('user-ativo').checked,
+        nivel,
       };
       if (senha) {
         if (senha.length < 8) throw new Error('Senha deve ter pelo menos 8 caracteres.');
@@ -568,13 +638,20 @@ function renderTabela(itens) {
 }
 
 function acoesLinha() {
-  return [
-    { label: 'Aprovar', tipo: 'patch', status: 'aprovada', cls: 'btn--primario' },
-    { label: 'Rejeitar', tipo: 'patch', status: 'rejeitada', cls: 'btn--secundario' },
-    { label: 'Editar', tipo: 'editar_membro', cls: 'btn--secundario' },
+  const acoes = [
     { label: 'Carteira', tipo: 'carteira', cls: 'btn--secundario' },
-    { label: 'Excluir', tipo: 'delete', cls: 'btn--excluir' },
   ];
+  if (podeEditar()) {
+    acoes.unshift(
+      { label: 'Aprovar', tipo: 'patch', status: 'aprovada', cls: 'btn--primario' },
+      { label: 'Rejeitar', tipo: 'patch', status: 'rejeitada', cls: 'btn--secundario' },
+      { label: 'Editar', tipo: 'editar_membro', cls: 'btn--secundario' },
+    );
+  }
+  if (podeExcluir()) {
+    acoes.push({ label: 'Excluir', tipo: 'delete', cls: 'btn--excluir' });
+  }
+  return acoes;
 }
 
 async function carregarLista() {
@@ -675,12 +752,16 @@ function renderTabelaEmitidas(itens) {
     });
     tdAc.appendChild(btnCart);
 
-    const btnDesfazer = document.createElement('button');
-    btnDesfazer.type = 'button';
-    btnDesfazer.className = 'btn btn--mini btn--fantasma';
-    btnDesfazer.textContent = 'Desfazer emissão';
-    btnDesfazer.addEventListener('click', () => desfazerEmissao(row));
-    tdAc.appendChild(btnDesfazer);
+    if (podeEditar()) {
+      const btnDesfazer = document.createElement('button');
+      btnDesfazer.type = 'button';
+      btnDesfazer.className = 'btn btn--mini btn--fantasma';
+      btnDesfazer.textContent = 'Desfazer emissão';
+      btnDesfazer.addEventListener('click', () => desfazerEmissao(row));
+      tdAc.appendChild(btnDesfazer);
+    } else {
+      tdAc.textContent = '—';
+    }
 
     tr.appendChild(tdAc);
     tbody.appendChild(tr);
@@ -1205,6 +1286,8 @@ function limparCamposLogin() {
 
 function sair() {
   setToken('');
+  sessionStorage.removeItem(STORAGE_NIVEL_KEY);
+  document.body.dataset.nivelAdmin = '';
   limparCamposLogin();
   mostrarLogin();
 }
@@ -1832,6 +1915,11 @@ async function carregarConfigLogin() {
   }
 }
 
+async function carregarSessaoAdmin() {
+  const sess = await api('/api/admin/sessao');
+  setNivelSessao(sess.nivel || 'editar');
+}
+
 async function init() {
   try {
     await carregarConfigLogin();
@@ -1842,15 +1930,21 @@ async function init() {
   }
 
   if (getToken()) {
-    mostrarHub();
+    try {
+      await carregarSessaoAdmin();
+      mostrarHub();
+    } catch {
+      setToken('');
+      sessionStorage.removeItem(STORAGE_NIVEL_KEY);
+      mostrarLogin();
+    }
   } else {
     mostrarLogin();
   }
 
   async function validarSessaoEEntrarNoHub() {
     await api('/api/admin/config');
-    // Confirma token com um endpoint protegido leve
-    await api('/api/admin/solicitacoes?status=pendente');
+    await carregarSessaoAdmin();
     mostrarHub();
   }
 
@@ -1862,15 +1956,17 @@ async function init() {
       return;
     }
     try {
-      const { token } = await api('/api/admin/login', {
+      const { token, nivel } = await api('/api/admin/login', {
         method: 'POST',
         body: JSON.stringify({ username, password }),
         skipAuth: true,
       });
       setToken(token);
+      setNivelSessao(nivel || 'editar');
       mostrarHub();
     } catch (e) {
       setToken('');
+      sessionStorage.removeItem(STORAGE_NIVEL_KEY);
       mostrarLogin(e.message || 'Erro ao entrar.', 'pass');
     }
   });
@@ -1886,6 +1982,7 @@ async function init() {
       await validarSessaoEEntrarNoHub();
     } catch (e) {
       setToken('');
+      sessionStorage.removeItem(STORAGE_NIVEL_KEY);
       mostrarLogin(
         e.status === 401 || String(e.message).includes('Não autorizado')
           ? 'Token recusado pelo servidor.'

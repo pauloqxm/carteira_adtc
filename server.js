@@ -127,12 +127,29 @@ function timingSafeEqualB64Url(a, b) {
   }
 }
 
-function signAdminJwt(username) {
+const NIVEIS_ADMIN = new Set(['administrador', 'editar', 'consultar']);
+
+function normalizarNivelAdmin(nivel) {
+  const n = String(nivel || '').trim().toLowerCase();
+  return NIVEIS_ADMIN.has(n) ? n : 'editar';
+}
+
+function nivelPodeEscrever(nivel) {
+  const n = normalizarNivelAdmin(nivel);
+  return n === 'administrador' || n === 'editar';
+}
+
+function nivelPodeExcluir(nivel) {
+  return normalizarNivelAdmin(nivel) === 'administrador';
+}
+
+function signAdminJwt(username, nivel) {
   const user = String(username || ADMIN_DEFAULT_USERNAME || 'admin').trim() || 'admin';
   const payload = {
     v: 2,
     sub: 'admin',
     username: user,
+    nivel: normalizarNivelAdmin(nivel),
     exp: Date.now() + ADMIN_SESSION_MS,
   };
   const payloadB64 = Buffer.from(JSON.stringify(payload)).toString('base64url');
@@ -160,7 +177,8 @@ function verifyAdminJwt(token) {
     typeof payload.username === 'string' && payload.username.trim()
       ? payload.username.trim()
       : ADMIN_DEFAULT_USERNAME || 'admin';
-  return { ...payload, username };
+  const nivel = normalizarNivelAdmin(payload.nivel);
+  return { ...payload, username, nivel };
 }
 
 function extractAdminToken(req) {
@@ -214,13 +232,17 @@ async function autenticarAdminPorPassword(username, password) {
     const safeUser = user.replace(/[%_]/g, '');
     const { data, error } = await supabaseAdmin
       .from('admin_users')
-      .select('id, username, password_sha256, ativo')
+      .select('id, username, password_sha256, ativo, nivel')
       .ilike('username', safeUser)
       .maybeSingle();
     if (!error && data) {
       if (!data.ativo) return null;
       if (timingSafeHashEqualHex(hash, data.password_sha256)) {
-        return { username: data.username, fonte: 'db' };
+        return {
+          username: data.username,
+          fonte: 'db',
+          nivel: normalizarNivelAdmin(data.nivel),
+        };
       }
       return null;
     }
@@ -228,7 +250,7 @@ async function autenticarAdminPorPassword(username, password) {
 
   const hashEsperado = ADMIN_USERS.get(user);
   if (hashEsperado && timingSafeHashEqualHex(hash, hashEsperado)) {
-    return { username: user, fonte: 'env' };
+    return { username: user, fonte: 'env', nivel: 'administrador' };
   }
   return null;
 }
@@ -345,6 +367,7 @@ function requireAdmin(req, res, next) {
       return res.status(401).json({ mensagem: 'Não autorizado.' });
     }
     req.adminUsername = payload.username || ADMIN_DEFAULT_USERNAME || 'admin';
+    req.adminNivel = normalizarNivelAdmin(payload.nivel);
     return next();
   }
 
@@ -357,7 +380,28 @@ function requireAdmin(req, res, next) {
     return res.status(401).json({ mensagem: 'Não autorizado.' });
   }
   req.adminUsername = ADMIN_DEFAULT_USERNAME || 'admin';
+  req.adminNivel = 'administrador';
   next();
+}
+
+/** Exige nível Editar ou Administrador (bloqueia só Consultar). */
+function requireAdminWrite(req, res, next) {
+  if (!nivelPodeEscrever(req.adminNivel)) {
+    return res.status(403).json({
+      mensagem: 'A sua conta tem nível Consultar e não pode alterar dados.',
+    });
+  }
+  return next();
+}
+
+/** Exige nível Administrador (exclusões). */
+function requireAdminDelete(req, res, next) {
+  if (!nivelPodeExcluir(req.adminNivel)) {
+    return res.status(403).json({
+      mensagem: 'Apenas Administrador pode excluir registos.',
+    });
+  }
+  return next();
 }
 
 app.get('/api/admin/config', (_req, res) => {
@@ -382,21 +426,29 @@ app.post('/api/admin/login', async (req, res) => {
   if (!auth) {
     return res.status(401).json({ mensagem: 'Utilizador ou senha incorretos.' });
   }
-  const token = signAdminJwt(auth.username);
+  const nivel = normalizarNivelAdmin(auth.nivel);
+  const token = signAdminJwt(auth.username, nivel);
   void registarAuditoria({
     actor: auth.username,
     acao: 'sessao.login',
     entidade: 'sessao',
     entidade_id: null,
-    resumo: `Login bem-sucedido (${auth.fonte})`,
+    resumo: `Login bem-sucedido (${auth.fonte}, ${nivel})`,
     antes: null,
-    depois: { fonte: auth.fonte },
+    depois: { fonte: auth.fonte, nivel },
   });
-  res.json({ token, username: auth.username });
+  res.json({ token, username: auth.username, nivel });
+});
+
+app.get('/api/admin/sessao', requireAdmin, (req, res) => {
+  res.json({
+    username: req.adminUsername || 'admin',
+    nivel: normalizarNivelAdmin(req.adminNivel),
+  });
 });
 
 const ADMIN_USER_PUBLIC =
-  'id, username, nome_exibicao, ativo, created_at, updated_at';
+  'id, username, nome_exibicao, ativo, nivel, created_at, updated_at';
 
 app.get('/api/admin/utilizadores', requireAdmin, async (req, res) => {
   if (!supabaseAdmin) {
@@ -413,23 +465,30 @@ app.get('/api/admin/utilizadores', requireAdmin, async (req, res) => {
   res.json({ itens: data || [] });
 });
 
-app.post('/api/admin/utilizadores', requireAdmin, async (req, res) => {
+app.post('/api/admin/utilizadores', requireAdmin, requireAdminWrite, async (req, res) => {
   if (!supabaseAdmin) {
     return res.status(500).json({ mensagem: 'Servidor sem credencial Supabase.' });
   }
   const username = String(req.body?.username || '').trim();
   const password = String(req.body?.password ?? '');
   const nomeExibicao = String(req.body?.nome_exibicao || '').trim() || null;
+  const nivel = normalizarNivelAdmin(req.body?.nivel || 'editar');
   if (username.length < 2) {
     return res.status(400).json({ mensagem: 'Username deve ter pelo menos 2 caracteres.' });
   }
   if (password.length < 8) {
     return res.status(400).json({ mensagem: 'Senha deve ter pelo menos 8 caracteres.' });
   }
+  if (!NIVEIS_ADMIN.has(String(req.body?.nivel || 'editar').trim().toLowerCase())) {
+    return res.status(400).json({
+      mensagem: 'Nível inválido. Use administrador, editar ou consultar.',
+    });
+  }
   const row = {
     username,
     password_sha256: sha256Hex(password),
     nome_exibicao: nomeExibicao,
+    nivel,
     ativo: true,
     updated_at: new Date().toISOString(),
   };
@@ -450,14 +509,14 @@ app.post('/api/admin/utilizadores', requireAdmin, async (req, res) => {
     acao: 'utilizador.criar',
     entidade: 'admin_user',
     entidade_id: data?.id,
-    resumo: `Criou utilizador ${username}`,
+    resumo: `Criou utilizador ${username} (${nivel})`,
     antes: null,
-    depois: { username, nome_exibicao: nomeExibicao, ativo: true },
+    depois: { username, nome_exibicao: nomeExibicao, ativo: true, nivel },
   });
   res.status(201).json({ ok: true, utilizador: data });
 });
 
-app.patch('/api/admin/utilizadores/:id', requireAdmin, async (req, res) => {
+app.patch('/api/admin/utilizadores/:id', requireAdmin, requireAdminWrite, async (req, res) => {
   if (!supabaseAdmin) {
     return res.status(500).json({ mensagem: 'Servidor sem credencial Supabase.' });
   }
@@ -467,7 +526,7 @@ app.patch('/api/admin/utilizadores/:id', requireAdmin, async (req, res) => {
   }
   const { data: atual, error: eGet } = await supabaseAdmin
     .from('admin_users')
-    .select('id, username, nome_exibicao, ativo, password_sha256')
+    .select('id, username, nome_exibicao, ativo, nivel, password_sha256')
     .eq('id', id)
     .maybeSingle();
   if (eGet) {
@@ -484,11 +543,21 @@ app.patch('/api/admin/utilizadores/:id', requireAdmin, async (req, res) => {
     username: atual.username,
     nome_exibicao: atual.nome_exibicao,
     ativo: atual.ativo,
+    nivel: normalizarNivelAdmin(atual.nivel),
   };
 
   if (Object.prototype.hasOwnProperty.call(body, 'nome_exibicao')) {
     const n = String(body.nome_exibicao ?? '').trim();
     patch.nome_exibicao = n || null;
+  }
+  if (Object.prototype.hasOwnProperty.call(body, 'nivel')) {
+    const nRaw = String(body.nivel || '').trim().toLowerCase();
+    if (!NIVEIS_ADMIN.has(nRaw)) {
+      return res.status(400).json({
+        mensagem: 'Nível inválido. Use administrador, editar ou consultar.',
+      });
+    }
+    patch.nivel = nRaw;
   }
   if (Object.prototype.hasOwnProperty.call(body, 'password')) {
     const password = String(body.password ?? '');
@@ -535,6 +604,7 @@ app.patch('/api/admin/utilizadores/:id', requireAdmin, async (req, res) => {
     username: data.username,
     nome_exibicao: data.nome_exibicao,
     ativo: data.ativo,
+    nivel: normalizarNivelAdmin(data.nivel),
     senha_alterada: Boolean(patch.password_sha256),
   };
   await registarAuditoria({
@@ -759,7 +829,7 @@ app.get('/api/admin/carteiras-emitidas', requireAdmin, async (req, res) => {
   }
 });
 
-app.post('/api/admin/carteiras-emitidas', requireAdmin, async (req, res) => {
+app.post('/api/admin/carteiras-emitidas', requireAdmin, requireAdminWrite, async (req, res) => {
   if (!supabaseAdmin) {
     return res.status(500).json({ mensagem: 'Servidor sem credencial Supabase.' });
   }
@@ -846,7 +916,7 @@ app.post('/api/admin/carteiras-emitidas', requireAdmin, async (req, res) => {
   });
 });
 
-app.delete('/api/admin/carteiras-emitidas/:id', requireAdmin, async (req, res) => {
+app.delete('/api/admin/carteiras-emitidas/:id', requireAdmin, requireAdminWrite, async (req, res) => {
   if (!supabaseAdmin) {
     return res.status(500).json({ mensagem: 'Servidor sem credencial Supabase.' });
   }
@@ -880,7 +950,7 @@ app.delete('/api/admin/carteiras-emitidas/:id', requireAdmin, async (req, res) =
   res.json({ ok: true, solicitacao: data });
 });
 
-app.patch('/api/admin/solicitacoes/:id', requireAdmin, async (req, res) => {
+app.patch('/api/admin/solicitacoes/:id', requireAdmin, requireAdminWrite, async (req, res) => {
   if (!supabaseAdmin) {
     return res.status(500).json({ mensagem: 'Servidor sem credencial Supabase.' });
   }
@@ -925,7 +995,7 @@ app.patch('/api/admin/solicitacoes/:id', requireAdmin, async (req, res) => {
   res.json({ ok: true, solicitacao: data });
 });
 
-app.delete('/api/admin/solicitacoes/:id', requireAdmin, async (req, res) => {
+app.delete('/api/admin/solicitacoes/:id', requireAdmin, requireAdminDelete, async (req, res) => {
   if (!supabaseAdmin) {
     return res.status(500).json({ mensagem: 'Servidor sem credencial Supabase.' });
   }
@@ -1309,7 +1379,7 @@ app.get('/api/admin/membros/:id', requireAdmin, async (req, res) => {
   res.json({ membro, solicitacoes: sols || [] });
 });
 
-app.patch('/api/admin/membros/:id', requireAdmin, async (req, res) => {
+app.patch('/api/admin/membros/:id', requireAdmin, requireAdminWrite, async (req, res) => {
   if (!supabaseAdmin) {
     return res.status(500).json({ mensagem: 'Servidor sem credencial Supabase.' });
   }

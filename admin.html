@@ -136,7 +136,7 @@
             Selecionar aprovadas
           </button>
           <button type="button" id="btn-limpar-selecao" class="btn btn--fantasma btn--mini">Limpar seleção</button>
-          <button type="button" id="btn-registrar-emissao" class="btn btn--secundario btn--mini" disabled>
+          <button type="button" id="btn-registrar-emissao" class="btn btn--secundario btn--mini" disabled data-requer-editar data-ocultar-se-consulta="1">
             Registar emissão
           </button>
           <button type="button" id="btn-baixar-pdfs-lote" class="btn btn--primario btn--mini" disabled>
@@ -473,7 +473,7 @@
           </label>
         </div>
         <div class="admin-modal__actions">
-          <button type="button" id="btn-ficha-guardar" class="btn btn--primario">Guardar alterações</button>
+          <button type="button" id="btn-ficha-guardar" class="btn btn--primario" data-requer-editar data-ocultar-se-consulta="1">Guardar alterações</button>
         </div>
 
         <h3 class="admin-dash-card__titulo" style="margin-top: 1.5rem">Solicitações / carteiras</h3>
@@ -507,11 +507,12 @@
       <section id="painel-utilizadores" class="card admin-tab-panel">
         <h2 class="card__titulo">Utilizadores do painel</h2>
         <p class="card__texto card__texto--peq">
-          Contas com acesso ao admin. O login por `.env` continua a funcionar como emergência.
+          Contas com acesso ao admin. Níveis: Administrador (pode excluir), Editar e Consultar.
+          O login por `.env` continua a funcionar como emergência (Administrador).
         </p>
         <p id="users-msg" class="admin-msg" hidden></p>
         <div class="admin-toolbar admin-toolbar--gestao">
-          <button type="button" id="btn-user-novo" class="btn btn--primario btn--mini">Novo utilizador</button>
+          <button type="button" id="btn-user-novo" class="btn btn--primario btn--mini" data-requer-editar data-ocultar-se-consulta="1">Novo utilizador</button>
           <button type="button" id="btn-users-recarregar" class="btn btn--fantasma btn--mini">Atualizar lista</button>
         </div>
         <div class="admin-table-wrap">
@@ -520,6 +521,7 @@
               <tr>
                 <th>Username</th>
                 <th>Nome</th>
+                <th>Nível</th>
                 <th>Ativo</th>
                 <th>Criado em</th>
                 <th>Ações</th>
@@ -606,6 +608,14 @@
       <label class="campo">
         <span class="campo__label">Nome de exibição</span>
         <input id="user-nome" class="campo__input" type="text" />
+      </label>
+      <label class="campo">
+        <span class="campo__label">Nível</span>
+        <select id="user-nivel" class="campo__input">
+          <option value="administrador">Administrador</option>
+          <option value="editar">Editar</option>
+          <option value="consultar">Consultar</option>
+        </select>
       </label>
       <label class="campo">
         <span class="campo__label" id="user-senha-label">Senha</span>

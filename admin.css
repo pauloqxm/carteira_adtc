@@ -722,6 +722,16 @@ button.admin-bars__row:focus-visible {
   color: var(--cor-ok, #6dcaa0);
 }
 
+body[data-nivel-admin='consultar'] [data-requer-editar][data-ocultar-se-consulta='1'] {
+  display: none !important;
+}
+
+body[data-nivel-admin='consultar'] #gestao-vista-ficha .campo__input:not([readonly]),
+body[data-nivel-admin='consultar'] #gestao-vista-ficha select.campo__input {
+  pointer-events: none;
+  opacity: 0.85;
+}
+
 @media (max-width: 700px) {
   .admin-audit-detalhe__grid {
     grid-template-columns: 1fr;

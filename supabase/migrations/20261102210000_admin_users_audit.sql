@@ -8,11 +8,13 @@ create table if not exists public.admin_users (
   username text not null,
   password_sha256 text not null,
   nome_exibicao text,
+  nivel text not null default 'editar',
   ativo boolean not null default true,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint admin_users_username_len check (char_length(trim(username)) >= 2),
-  constraint admin_users_password_sha256_hex check (password_sha256 ~ '^[0-9a-f]{64}$')
+  constraint admin_users_password_sha256_hex check (password_sha256 ~ '^[0-9a-f]{64}$'),
+  constraint admin_users_nivel_check check (nivel in ('administrador', 'editar', 'consultar'))
 );
 
 create unique index if not exists idx_admin_users_username_lower
