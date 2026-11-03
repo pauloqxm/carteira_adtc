@@ -81,6 +81,13 @@
             Dashboard, lista de membros e edição individual do cadastro.
           </span>
         </button>
+        <button type="button" class="admin-hub-card" id="hub-administracao" data-modulo="administracao">
+          <span class="admin-hub-card__eyebrow">Sistema</span>
+          <strong class="admin-hub-card__titulo">Administração</strong>
+          <span class="admin-hub-card__desc">
+            Utilizadores do painel e auditoria das alterações.
+          </span>
+        </button>
       </div>
     </section>
 
@@ -486,7 +493,135 @@
         </div>
       </section>
     </div>
+
+    <div id="sec-administracao" hidden>
+      <div class="admin-modulo-barra">
+        <button type="button" class="btn btn--fantasma btn--mini" id="btn-voltar-hub-admin">← Voltar ao hub</button>
+        <span class="admin-modulo-barra__nome">Administração</span>
+      </div>
+      <nav class="admin-tabs" id="admin-tabs-sistema" aria-label="Secções de administração">
+        <button type="button" class="admin-tab admin-tab--active" data-admin-tab="utilizadores">Utilizadores</button>
+        <button type="button" class="admin-tab" data-admin-tab="auditoria">Auditoria</button>
+      </nav>
+
+      <section id="painel-utilizadores" class="card admin-tab-panel">
+        <h2 class="card__titulo">Utilizadores do painel</h2>
+        <p class="card__texto card__texto--peq">
+          Contas com acesso ao admin. O login por `.env` continua a funcionar como emergência.
+        </p>
+        <p id="users-msg" class="admin-msg" hidden></p>
+        <div class="admin-toolbar admin-toolbar--gestao">
+          <button type="button" id="btn-user-novo" class="btn btn--primario btn--mini">Novo utilizador</button>
+          <button type="button" id="btn-users-recarregar" class="btn btn--fantasma btn--mini">Atualizar lista</button>
+        </div>
+        <div class="admin-table-wrap">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>Username</th>
+                <th>Nome</th>
+                <th>Ativo</th>
+                <th>Criado em</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody id="tbody-utilizadores"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="painel-auditoria" class="card admin-tab-panel" hidden>
+        <h2 class="card__titulo">Auditoria</h2>
+        <p class="card__texto card__texto--peq">Histórico de alterações registadas no painel.</p>
+        <div class="admin-filtros admin-filtros--auditoria">
+          <label class="campo">
+            <span class="campo__label">Ação</span>
+            <select id="audit-filtro-acao" class="campo__input">
+              <option value="">Todas</option>
+              <option value="sessao.login">Login</option>
+              <option value="membro.atualizar">Membro atualizado</option>
+              <option value="solicitacao.status">Status solicitação</option>
+              <option value="solicitacao.excluir">Excluir solicitação</option>
+              <option value="carteira.emitir">Emitir carteira</option>
+              <option value="carteira.desfazer">Desfazer emissão</option>
+              <option value="utilizador.criar">Criar utilizador</option>
+              <option value="utilizador.atualizar">Atualizar utilizador</option>
+            </select>
+          </label>
+          <label class="campo">
+            <span class="campo__label">Utilizador</span>
+            <input id="audit-filtro-actor" class="campo__input" type="text" placeholder="username" />
+          </label>
+          <label class="campo">
+            <span class="campo__label">Texto</span>
+            <input id="audit-filtro-q" class="campo__input" type="text" placeholder="resumo…" />
+          </label>
+          <label class="campo">
+            <span class="campo__label">De</span>
+            <input id="audit-filtro-de" class="campo__input" type="date" />
+          </label>
+          <label class="campo">
+            <span class="campo__label">Até</span>
+            <input id="audit-filtro-ate" class="campo__input" type="date" />
+          </label>
+          <div class="admin-filtros__acoes">
+            <button type="button" id="btn-audit-filtrar" class="btn btn--primario btn--mini">Filtrar</button>
+            <button type="button" id="btn-audit-limpar" class="btn btn--fantasma btn--mini">Limpar</button>
+          </div>
+        </div>
+        <p id="audit-msg" class="admin-msg" hidden></p>
+        <div class="admin-table-wrap">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>Data</th>
+                <th>Utilizador</th>
+                <th>Ação</th>
+                <th>Resumo</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="tbody-auditoria"></tbody>
+          </table>
+        </div>
+        <div class="admin-paginacao">
+          <button type="button" id="btn-audit-prev" class="btn btn--fantasma btn--mini" disabled>Anterior</button>
+          <span id="audit-pagina-info" class="admin-paginacao__info">—</span>
+          <button type="button" id="btn-audit-next" class="btn btn--fantasma btn--mini" disabled>Seguinte</button>
+        </div>
+      </section>
+    </div>
   </main>
+
+  <div id="modal-utilizador" class="admin-modal" hidden>
+    <div class="admin-modal__backdrop" id="modal-user-backdrop"></div>
+    <div class="admin-modal__card card" role="dialog" aria-modal="true" aria-labelledby="modal-user-titulo">
+      <h2 id="modal-user-titulo" class="card__titulo">Novo utilizador</h2>
+      <input type="hidden" id="user-edit-id" value="" />
+      <p id="user-form-msg" class="admin-msg" hidden></p>
+      <label class="campo">
+        <span class="campo__label">Username</span>
+        <input id="user-username" class="campo__input" type="text" autocomplete="off" />
+      </label>
+      <label class="campo">
+        <span class="campo__label">Nome de exibição</span>
+        <input id="user-nome" class="campo__input" type="text" />
+      </label>
+      <label class="campo">
+        <span class="campo__label" id="user-senha-label">Senha</span>
+        <input id="user-senha" class="campo__input" type="password" autocomplete="new-password" />
+      </label>
+      <label class="campo" id="user-ativo-wrap" hidden>
+        <span class="campo__label">
+          <input id="user-ativo" type="checkbox" checked /> Ativo
+        </span>
+      </label>
+      <div class="admin-modal__actions">
+        <button type="button" id="btn-user-cancelar" class="btn btn--fantasma">Cancelar</button>
+        <button type="button" id="btn-user-guardar" class="btn btn--primario">Guardar</button>
+      </div>
+    </div>
+  </div>
 
   <div id="modal-editar-membro" class="admin-modal" hidden>
     <div class="admin-modal__backdrop" id="modal-editar-backdrop"></div>

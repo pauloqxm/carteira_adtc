@@ -391,7 +391,7 @@
 
 .admin-hub__grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 1rem;
 }
 
@@ -676,6 +676,56 @@ button.admin-bars__row:focus-visible {
   opacity: 0.72;
   cursor: not-allowed;
   color: var(--cor-texto-mudo);
+}
+
+.admin-filtros--auditoria {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.75rem 1rem;
+  margin: 1rem 0 1.25rem;
+  align-items: end;
+}
+
+.admin-filtros__acoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  padding-bottom: 0.15rem;
+}
+
+.admin-code {
+  font-size: 0.78rem;
+  word-break: break-all;
+}
+
+.admin-audit-detalhe__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.admin-audit-pre {
+  margin: 0.4rem 0 0;
+  padding: 0.65rem 0.75rem;
+  border-radius: var(--raio);
+  border: 1px solid var(--cor-borda);
+  background: rgba(0, 0, 0, 0.25);
+  font-size: 0.78rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.admin-msg--ok {
+  color: var(--cor-ok, #6dcaa0);
+}
+
+@media (max-width: 700px) {
+  .admin-audit-detalhe__grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 900px) {

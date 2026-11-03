@@ -98,9 +98,11 @@ if (ADMIN_USERS.size === 0 && ADMIN_PASSWORD_SHA256 && HASH_HEX_64_RE.test(ADMIN
   ADMIN_USERS.set(ADMIN_USERNAME, ADMIN_PASSWORD_SHA256);
 }
 const ADMIN_DEFAULT_USERNAME = ADMIN_USERS.keys().next().value || ADMIN_USERNAME;
+const HAS_SUPABASE_KEYS = !!(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY);
 
+/** Password login se há credenciais .env ou Supabase (utilizadores na BD). */
 function usePasswordLogin() {
-  return ADMIN_USERS.size > 0;
+  return ADMIN_USERS.size > 0 || HAS_SUPABASE_KEYS;
 }
 
 function timingSafeHashEqualHex(hexA, hexB) {
@@ -125,8 +127,14 @@ function timingSafeEqualB64Url(a, b) {
   }
 }
 
-function signAdminJwt() {
-  const payload = { v: 1, sub: 'admin', exp: Date.now() + ADMIN_SESSION_MS };
+function signAdminJwt(username) {
+  const user = String(username || ADMIN_DEFAULT_USERNAME || 'admin').trim() || 'admin';
+  const payload = {
+    v: 2,
+    sub: 'admin',
+    username: user,
+    exp: Date.now() + ADMIN_SESSION_MS,
+  };
   const payloadB64 = Buffer.from(JSON.stringify(payload)).toString('base64url');
   const sig = crypto.createHmac('sha256', ADMIN_SECRET).update(payloadB64).digest('base64url');
   return `${payloadB64}.${sig}`;
@@ -148,7 +156,11 @@ function verifyAdminJwt(token) {
   }
   if (payload.sub !== 'admin' || typeof payload.exp !== 'number') return null;
   if (payload.exp < Date.now()) return null;
-  return payload;
+  const username =
+    typeof payload.username === 'string' && payload.username.trim()
+      ? payload.username.trim()
+      : ADMIN_DEFAULT_USERNAME || 'admin';
+  return { ...payload, username };
 }
 
 function extractAdminToken(req) {
@@ -170,6 +182,56 @@ const supabaseAdmin =
         realtime: { transport: ws },
       })
     : null;
+
+async function registarAuditoria({ actor, acao, entidade, entidade_id, resumo, antes, depois }) {
+  if (!supabaseAdmin) return;
+  try {
+    const { error } = await supabaseAdmin.from('audit_log').insert({
+      actor_username: String(actor || 'desconhecido').trim().slice(0, 120) || 'desconhecido',
+      acao: String(acao || '').trim().slice(0, 80),
+      entidade: String(entidade || '').trim().slice(0, 40),
+      entidade_id: entidade_id != null ? String(entidade_id).slice(0, 80) : null,
+      resumo: String(resumo || '').trim().slice(0, 500),
+      antes: antes ?? null,
+      depois: depois ?? null,
+    });
+    if (error) console.error('auditoria:', error.message || error);
+  } catch (e) {
+    console.error('auditoria:', e);
+  }
+}
+
+function sha256Hex(text) {
+  return crypto.createHash('sha256').update(String(text), 'utf8').digest('hex');
+}
+
+async function autenticarAdminPorPassword(username, password) {
+  const user = String(username || '').trim();
+  const hash = sha256Hex(password);
+  if (!user) return null;
+
+  if (supabaseAdmin) {
+    const safeUser = user.replace(/[%_]/g, '');
+    const { data, error } = await supabaseAdmin
+      .from('admin_users')
+      .select('id, username, password_sha256, ativo')
+      .ilike('username', safeUser)
+      .maybeSingle();
+    if (!error && data) {
+      if (!data.ativo) return null;
+      if (timingSafeHashEqualHex(hash, data.password_sha256)) {
+        return { username: data.username, fonte: 'db' };
+      }
+      return null;
+    }
+  }
+
+  const hashEsperado = ADMIN_USERS.get(user);
+  if (hashEsperado && timingSafeHashEqualHex(hash, hashEsperado)) {
+    return { username: user, fonte: 'env' };
+  }
+  return null;
+}
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -278,9 +340,11 @@ function requireAdmin(req, res, next) {
         mensagem: 'Defina ADMIN_SECRET no servidor para assinar a sessão do painel.',
       });
     }
-    if (!verifyAdminJwt(token)) {
+    const payload = verifyAdminJwt(token);
+    if (!payload) {
       return res.status(401).json({ mensagem: 'Não autorizado.' });
     }
+    req.adminUsername = payload.username || ADMIN_DEFAULT_USERNAME || 'admin';
     return next();
   }
 
@@ -292,6 +356,7 @@ function requireAdmin(req, res, next) {
   if (token !== ADMIN_SECRET) {
     return res.status(401).json({ mensagem: 'Não autorizado.' });
   }
+  req.adminUsername = ADMIN_DEFAULT_USERNAME || 'admin';
   next();
 }
 
@@ -302,7 +367,7 @@ app.get('/api/admin/config', (_req, res) => {
   });
 });
 
-app.post('/api/admin/login', (req, res) => {
+app.post('/api/admin/login', async (req, res) => {
   if (!usePasswordLogin()) {
     return res
       .status(400)
@@ -313,12 +378,222 @@ app.post('/api/admin/login', (req, res) => {
   }
   const username = String(req.body?.username || '').trim();
   const password = String(req.body?.password ?? '');
-  const hash = crypto.createHash('sha256').update(password, 'utf8').digest('hex');
-  const hashEsperado = ADMIN_USERS.get(username);
-  if (!hashEsperado || !timingSafeHashEqualHex(hash, hashEsperado)) {
+  const auth = await autenticarAdminPorPassword(username, password);
+  if (!auth) {
     return res.status(401).json({ mensagem: 'Utilizador ou senha incorretos.' });
   }
-  res.json({ token: signAdminJwt() });
+  const token = signAdminJwt(auth.username);
+  void registarAuditoria({
+    actor: auth.username,
+    acao: 'sessao.login',
+    entidade: 'sessao',
+    entidade_id: null,
+    resumo: `Login bem-sucedido (${auth.fonte})`,
+    antes: null,
+    depois: { fonte: auth.fonte },
+  });
+  res.json({ token, username: auth.username });
+});
+
+const ADMIN_USER_PUBLIC =
+  'id, username, nome_exibicao, ativo, created_at, updated_at';
+
+app.get('/api/admin/utilizadores', requireAdmin, async (req, res) => {
+  if (!supabaseAdmin) {
+    return res.status(500).json({ mensagem: 'Servidor sem credencial Supabase.' });
+  }
+  const { data, error } = await supabaseAdmin
+    .from('admin_users')
+    .select(ADMIN_USER_PUBLIC)
+    .order('username', { ascending: true });
+  if (error) {
+    console.error(error);
+    return res.status(500).json({ mensagem: 'Erro ao listar utilizadores. Aplique a migration no Supabase.' });
+  }
+  res.json({ itens: data || [] });
+});
+
+app.post('/api/admin/utilizadores', requireAdmin, async (req, res) => {
+  if (!supabaseAdmin) {
+    return res.status(500).json({ mensagem: 'Servidor sem credencial Supabase.' });
+  }
+  const username = String(req.body?.username || '').trim();
+  const password = String(req.body?.password ?? '');
+  const nomeExibicao = String(req.body?.nome_exibicao || '').trim() || null;
+  if (username.length < 2) {
+    return res.status(400).json({ mensagem: 'Username deve ter pelo menos 2 caracteres.' });
+  }
+  if (password.length < 8) {
+    return res.status(400).json({ mensagem: 'Senha deve ter pelo menos 8 caracteres.' });
+  }
+  const row = {
+    username,
+    password_sha256: sha256Hex(password),
+    nome_exibicao: nomeExibicao,
+    ativo: true,
+    updated_at: new Date().toISOString(),
+  };
+  const { data, error } = await supabaseAdmin
+    .from('admin_users')
+    .insert(row)
+    .select(ADMIN_USER_PUBLIC)
+    .maybeSingle();
+  if (error) {
+    if (String(error.message || '').toLowerCase().includes('duplicate') || error.code === '23505') {
+      return res.status(409).json({ mensagem: 'Já existe um utilizador com este username.' });
+    }
+    console.error(error);
+    return res.status(500).json({ mensagem: 'Erro ao criar utilizador.' });
+  }
+  await registarAuditoria({
+    actor: req.adminUsername,
+    acao: 'utilizador.criar',
+    entidade: 'admin_user',
+    entidade_id: data?.id,
+    resumo: `Criou utilizador ${username}`,
+    antes: null,
+    depois: { username, nome_exibicao: nomeExibicao, ativo: true },
+  });
+  res.status(201).json({ ok: true, utilizador: data });
+});
+
+app.patch('/api/admin/utilizadores/:id', requireAdmin, async (req, res) => {
+  if (!supabaseAdmin) {
+    return res.status(500).json({ mensagem: 'Servidor sem credencial Supabase.' });
+  }
+  const { id } = req.params;
+  if (!UUID_RE.test(id)) {
+    return res.status(400).json({ mensagem: 'ID inválido.' });
+  }
+  const { data: atual, error: eGet } = await supabaseAdmin
+    .from('admin_users')
+    .select('id, username, nome_exibicao, ativo, password_sha256')
+    .eq('id', id)
+    .maybeSingle();
+  if (eGet) {
+    console.error(eGet);
+    return res.status(500).json({ mensagem: 'Erro ao carregar utilizador.' });
+  }
+  if (!atual) {
+    return res.status(404).json({ mensagem: 'Utilizador não encontrado.' });
+  }
+
+  const body = req.body && typeof req.body === 'object' ? req.body : {};
+  const patch = { updated_at: new Date().toISOString() };
+  const antes = {
+    username: atual.username,
+    nome_exibicao: atual.nome_exibicao,
+    ativo: atual.ativo,
+  };
+
+  if (Object.prototype.hasOwnProperty.call(body, 'nome_exibicao')) {
+    const n = String(body.nome_exibicao ?? '').trim();
+    patch.nome_exibicao = n || null;
+  }
+  if (Object.prototype.hasOwnProperty.call(body, 'password')) {
+    const password = String(body.password ?? '');
+    if (password.length < 8) {
+      return res.status(400).json({ mensagem: 'Senha deve ter pelo menos 8 caracteres.' });
+    }
+    patch.password_sha256 = sha256Hex(password);
+  }
+  if (Object.prototype.hasOwnProperty.call(body, 'ativo')) {
+    const ativo = Boolean(body.ativo);
+    if (!ativo && atual.ativo) {
+      const { count, error: eCnt } = await supabaseAdmin
+        .from('admin_users')
+        .select('id', { count: 'exact', head: true })
+        .eq('ativo', true);
+      if (eCnt) {
+        console.error(eCnt);
+        return res.status(500).json({ mensagem: 'Erro ao validar utilizadores ativos.' });
+      }
+      if ((count ?? 0) <= 1) {
+        return res.status(400).json({ mensagem: 'Não é possível desativar o último utilizador ativo.' });
+      }
+    }
+    patch.ativo = ativo;
+  }
+
+  const camposUteis = Object.keys(patch).filter((k) => k !== 'updated_at');
+  if (!camposUteis.length) {
+    return res.status(400).json({ mensagem: 'Nenhum campo para atualizar.' });
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from('admin_users')
+    .update(patch)
+    .eq('id', id)
+    .select(ADMIN_USER_PUBLIC)
+    .maybeSingle();
+  if (error) {
+    console.error(error);
+    return res.status(500).json({ mensagem: 'Erro ao atualizar utilizador.' });
+  }
+
+  const depois = {
+    username: data.username,
+    nome_exibicao: data.nome_exibicao,
+    ativo: data.ativo,
+    senha_alterada: Boolean(patch.password_sha256),
+  };
+  await registarAuditoria({
+    actor: req.adminUsername,
+    acao: 'utilizador.atualizar',
+    entidade: 'admin_user',
+    entidade_id: id,
+    resumo: `Atualizou utilizador ${data.username}`,
+    antes,
+    depois,
+  });
+  res.json({ ok: true, utilizador: data });
+});
+
+app.get('/api/admin/auditoria', requireAdmin, async (req, res) => {
+  if (!supabaseAdmin) {
+    return res.status(500).json({ mensagem: 'Servidor sem credencial Supabase.' });
+  }
+  const page = Math.max(1, parseInt(String(req.query.page || '1'), 10) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit || '30'), 10) || 30));
+  const from = (page - 1) * limit;
+  const to = from + limit - 1;
+
+  let q = supabaseAdmin
+    .from('audit_log')
+    .select('id, created_at, actor_username, acao, entidade, entidade_id, resumo, antes, depois', {
+      count: 'exact',
+    })
+    .order('created_at', { ascending: false })
+    .range(from, to);
+
+  const acao = String(req.query.acao || '').trim();
+  const actor = String(req.query.actor || '').trim();
+  const texto = String(req.query.q || '').trim();
+  const de = String(req.query.de || '').trim();
+  const ate = String(req.query.ate || '').trim();
+
+  if (acao) q = q.eq('acao', acao);
+  if (actor) q = q.ilike('actor_username', `%${actor}%`);
+  if (texto) q = q.ilike('resumo', `%${texto}%`);
+  if (de && /^\d{4}-\d{2}-\d{2}/.test(de)) q = q.gte('created_at', de.slice(0, 10));
+  if (ate && /^\d{4}-\d{2}-\d{2}/.test(ate)) {
+    const fim = ate.slice(0, 10);
+    q = q.lte('created_at', `${fim}T23:59:59.999Z`);
+  }
+
+  const { data, error, count } = await q;
+  if (error) {
+    console.error(error);
+    return res.status(500).json({ mensagem: 'Erro ao listar auditoria. Aplique a migration no Supabase.' });
+  }
+  const total = count ?? 0;
+  res.json({
+    itens: data || [],
+    page,
+    limit,
+    total,
+    pages: Math.max(1, Math.ceil(total / limit)),
+  });
 });
 
 app.get('/api/admin/solicitacoes', requireAdmin, async (req, res) => {
@@ -551,9 +826,21 @@ app.post('/api/admin/carteiras-emitidas', requireAdmin, async (req, res) => {
     (atualizados || []).map((s) => sincronizarMembroComCongregacao(s.membro_id, s.congregacao_nome)),
   );
 
+  const n = (atualizados || []).length;
+  const protocolos = (atualizados || []).map((s) => s.protocolo).filter(Boolean);
+  await registarAuditoria({
+    actor: req.adminUsername,
+    acao: 'carteira.emitir',
+    entidade: 'solicitacao',
+    entidade_id: protocolos[0] || null,
+    resumo: `Registou emissão de ${n} carteira(s)`,
+    antes: null,
+    depois: { ids: (atualizados || []).map((s) => s.id), protocolos, emitida_em: agora },
+  });
+
   res.json({
     ok: true,
-    registadas: (atualizados || []).length,
+    registadas: n,
     itens: atualizados || [],
     ignoradas,
   });
@@ -581,6 +868,15 @@ app.delete('/api/admin/carteiras-emitidas/:id', requireAdmin, async (req, res) =
   if (!data) {
     return res.status(404).json({ mensagem: 'Emissão não encontrada.' });
   }
+  await registarAuditoria({
+    actor: req.adminUsername,
+    acao: 'carteira.desfazer',
+    entidade: 'solicitacao',
+    entidade_id: data.id,
+    resumo: `Desfez emissão da solicitação ${data.protocolo}`,
+    antes: { emitida: true },
+    depois: { emitida: false, protocolo: data.protocolo },
+  });
   res.json({ ok: true, solicitacao: data });
 });
 
@@ -596,6 +892,11 @@ app.patch('/api/admin/solicitacoes/:id', requireAdmin, async (req, res) => {
   if (!['pendente', 'aprovada', 'rejeitada'].includes(st)) {
     return res.status(400).json({ mensagem: 'status_solicitacao inválido.' });
   }
+  const { data: antesRow } = await supabaseAdmin
+    .from('solicitacoes')
+    .select('id, protocolo, status_solicitacao')
+    .eq('id', id)
+    .maybeSingle();
   const { data, error } = await supabaseAdmin
     .from('solicitacoes')
     .update({ status_solicitacao: st })
@@ -612,6 +913,15 @@ app.patch('/api/admin/solicitacoes/:id', requireAdmin, async (req, res) => {
   if (st === 'aprovada') {
     await sincronizarMembroComCongregacao(data.membro_id, data.congregacao_nome);
   }
+  await registarAuditoria({
+    actor: req.adminUsername,
+    acao: 'solicitacao.status',
+    entidade: 'solicitacao',
+    entidade_id: data.id,
+    resumo: `Alterou status de ${data.protocolo}: ${antesRow?.status_solicitacao || '?'} → ${st}`,
+    antes: { status_solicitacao: antesRow?.status_solicitacao ?? null },
+    depois: { status_solicitacao: st, protocolo: data.protocolo },
+  });
   res.json({ ok: true, solicitacao: data });
 });
 
@@ -623,6 +933,11 @@ app.delete('/api/admin/solicitacoes/:id', requireAdmin, async (req, res) => {
   if (!UUID_RE.test(id)) {
     return res.status(400).json({ mensagem: 'ID inválido.' });
   }
+  const { data: antesRow } = await supabaseAdmin
+    .from('solicitacoes')
+    .select('id, protocolo, status_solicitacao, membro_id')
+    .eq('id', id)
+    .maybeSingle();
   const { data: removidos, error } = await supabaseAdmin.from('solicitacoes').delete().eq('id', id).select('id');
   if (error) {
     console.error(error);
@@ -631,6 +946,15 @@ app.delete('/api/admin/solicitacoes/:id', requireAdmin, async (req, res) => {
   if (!removidos?.length) {
     return res.status(404).json({ mensagem: 'Solicitação não encontrada.' });
   }
+  await registarAuditoria({
+    actor: req.adminUsername,
+    acao: 'solicitacao.excluir',
+    entidade: 'solicitacao',
+    entidade_id: id,
+    resumo: `Excluiu solicitação ${antesRow?.protocolo || id}`,
+    antes: antesRow || { id },
+    depois: null,
+  });
   res.json({ ok: true });
 });
 
@@ -1076,6 +1400,12 @@ app.patch('/api/admin/membros/:id', requireAdmin, async (req, res) => {
     return res.status(400).json({ mensagem: 'Nenhum campo para atualizar.' });
   }
 
+  const campos = Object.keys(patch);
+  const { data: antesRow } = await supabaseAdmin.from('membros').select('*').eq('id', id).maybeSingle();
+  if (!antesRow) {
+    return res.status(404).json({ mensagem: 'Membro não encontrado.' });
+  }
+
   const { data, error } = await supabaseAdmin.from('membros').update(patch).eq('id', id).select().maybeSingle();
   if (error) {
     console.error(error);
@@ -1084,6 +1414,22 @@ app.patch('/api/admin/membros/:id', requireAdmin, async (req, res) => {
   if (!data) {
     return res.status(404).json({ mensagem: 'Membro não encontrado.' });
   }
+
+  const antes = {};
+  const depois = {};
+  for (const k of campos) {
+    antes[k] = antesRow[k] ?? null;
+    depois[k] = data[k] ?? null;
+  }
+  await registarAuditoria({
+    actor: req.adminUsername,
+    acao: 'membro.atualizar',
+    entidade: 'membro',
+    entidade_id: id,
+    resumo: `Atualizou membro ${data.nome_completo || data.cod_membro || id} (${campos.join(', ')})`,
+    antes,
+    depois,
+  });
   res.json({ ok: true, membro: data });
 });
 

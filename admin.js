@@ -19,6 +19,10 @@ let membrosOrder = 'asc';
 const MEMBROS_LIMIT = 50;
 /** Opções para selects da ficha (preenchidas pelos filtros da API). */
 let opcoesFichaMembros = { congregacoes: [], cargos: [], situacoes: [] };
+/** Paginação da auditoria. */
+let auditPage = 1;
+let auditPages = 1;
+const AUDIT_LIMIT = 30;
 
 /** Cache do último PDF gerado `{ chave, blob, fname }` (evita gerar duas vezes ao visualizar e descarregar). */
 let carteiraPdfCache = null;
@@ -114,11 +118,18 @@ function setTopoSub(texto) {
   if (sub) sub.textContent = texto;
 }
 
-function mostrarLogin(erro, alvo) {
-  el('sec-login').hidden = false;
+function ocultarSecoesPainel() {
+  el('sec-login').hidden = true;
   el('sec-hub').hidden = true;
   el('sec-painel').hidden = true;
   el('sec-gestao').hidden = true;
+  const adm = el('sec-administracao');
+  if (adm) adm.hidden = true;
+}
+
+function mostrarLogin(erro, alvo) {
+  ocultarSecoesPainel();
+  el('sec-login').hidden = false;
   setSairVisivel(false);
   setTopoSub('Acesso restrito à secretaria');
   const geral = el('login-msg');
@@ -142,19 +153,15 @@ function mostrarLogin(erro, alvo) {
 }
 
 function mostrarHub() {
-  el('sec-login').hidden = true;
+  ocultarSecoesPainel();
   el('sec-hub').hidden = false;
-  el('sec-painel').hidden = true;
-  el('sec-gestao').hidden = true;
   setSairVisivel(true);
   setTopoSub('Escolha um módulo para continuar');
 }
 
 function abrirModuloEmissao() {
-  el('sec-login').hidden = true;
-  el('sec-hub').hidden = true;
+  ocultarSecoesPainel();
   el('sec-painel').hidden = false;
-  el('sec-gestao').hidden = true;
   setSairVisivel(true);
   setTopoSub('Emissão de Credencial');
   switchTab('solicitacoes');
@@ -162,14 +169,253 @@ function abrirModuloEmissao() {
 }
 
 function abrirModuloGestao() {
-  el('sec-login').hidden = true;
-  el('sec-hub').hidden = true;
-  el('sec-painel').hidden = true;
+  ocultarSecoesPainel();
   el('sec-gestao').hidden = false;
   setSairVisivel(true);
   setTopoSub('Gestão de Membros');
   mostrarVistaListaMembros();
   carregarGestaoMembros();
+}
+
+function abrirModuloAdministracao() {
+  ocultarSecoesPainel();
+  el('sec-administracao').hidden = false;
+  setSairVisivel(true);
+  setTopoSub('Administração');
+  switchAdminTab('utilizadores');
+}
+
+function switchAdminTab(tab) {
+  const id = tab === 'auditoria' ? 'auditoria' : 'utilizadores';
+  document.querySelectorAll('#admin-tabs-sistema .admin-tab').forEach((btn) => {
+    btn.classList.toggle('admin-tab--active', btn.dataset.adminTab === id);
+  });
+  el('painel-utilizadores').hidden = id !== 'utilizadores';
+  el('painel-auditoria').hidden = id !== 'auditoria';
+  if (id === 'utilizadores') carregarUtilizadores();
+  else carregarAuditoria();
+}
+
+function mostrarMsgUsers(texto, ok) {
+  const msg = el('users-msg');
+  if (!msg) return;
+  if (!texto) {
+    msg.hidden = true;
+    return;
+  }
+  msg.textContent = texto;
+  msg.hidden = false;
+  msg.classList.toggle('admin-msg--ok', Boolean(ok));
+}
+
+function fecharModalUtilizador() {
+  const m = el('modal-utilizador');
+  if (m) m.hidden = true;
+}
+
+function abrirModalUtilizadorNovo() {
+  el('modal-user-titulo').textContent = 'Novo utilizador';
+  el('user-edit-id').value = '';
+  el('user-username').value = '';
+  el('user-username').disabled = false;
+  el('user-nome').value = '';
+  el('user-senha').value = '';
+  el('user-senha-label').textContent = 'Senha';
+  el('user-ativo-wrap').hidden = true;
+  el('user-ativo').checked = true;
+  const msg = el('user-form-msg');
+  msg.hidden = true;
+  el('modal-utilizador').hidden = false;
+}
+
+function abrirModalUtilizadorEditar(u) {
+  el('modal-user-titulo').textContent = 'Editar utilizador';
+  el('user-edit-id').value = u.id;
+  el('user-username').value = u.username || '';
+  el('user-username').disabled = true;
+  el('user-nome').value = u.nome_exibicao || '';
+  el('user-senha').value = '';
+  el('user-senha-label').textContent = 'Nova senha (opcional)';
+  el('user-ativo-wrap').hidden = false;
+  el('user-ativo').checked = Boolean(u.ativo);
+  const msg = el('user-form-msg');
+  msg.hidden = true;
+  el('modal-utilizador').hidden = false;
+}
+
+async function carregarUtilizadores() {
+  const tbody = el('tbody-utilizadores');
+  if (!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="5">A carregar…</td></tr>';
+  try {
+    const data = await api('/api/admin/utilizadores');
+    const itens = data.itens || [];
+    if (!itens.length) {
+      tbody.innerHTML =
+        '<tr><td colspan="5">Nenhum utilizador na base. Crie o primeiro aqui (login .env continua válido).</td></tr>';
+      return;
+    }
+    tbody.innerHTML = itens
+      .map((u) => {
+        const ativo = u.ativo
+          ? '<span class="badge badge--aprovada">Sim</span>'
+          : '<span class="badge badge--rejeitada">Não</span>';
+        return `<tr>
+          <td>${escapeHtml(u.username)}</td>
+          <td>${escapeHtml(u.nome_exibicao || '—')}</td>
+          <td>${ativo}</td>
+          <td>${escapeHtml(formatarData(u.created_at))}</td>
+          <td>
+            <button type="button" class="btn btn--fantasma btn--mini btn-user-editar" data-id="${escapeHtml(u.id)}">Editar</button>
+            <button type="button" class="btn btn--fantasma btn--mini btn-user-toggle" data-id="${escapeHtml(u.id)}" data-ativo="${u.ativo ? '1' : '0'}">${
+              u.ativo ? 'Desativar' : 'Ativar'
+            }</button>
+          </td>
+        </tr>`;
+      })
+      .join('');
+    tbody.querySelectorAll('.btn-user-editar').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const u = itens.find((x) => x.id === btn.dataset.id);
+        if (u) abrirModalUtilizadorEditar(u);
+      });
+    });
+    tbody.querySelectorAll('.btn-user-toggle').forEach((btn) => {
+      btn.addEventListener('click', () => alternarAtivoUtilizador(btn.dataset.id, btn.dataset.ativo !== '1'));
+    });
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="5">${escapeHtml(e.message || 'Erro')}</td></tr>`;
+  }
+}
+
+async function guardarUtilizador() {
+  const msg = el('user-form-msg');
+  msg.hidden = true;
+  const id = el('user-edit-id').value.trim();
+  const username = el('user-username').value.trim();
+  const nome = el('user-nome').value.trim();
+  const senha = el('user-senha').value;
+  try {
+    if (!id) {
+      if (username.length < 2) throw new Error('Username deve ter pelo menos 2 caracteres.');
+      if (senha.length < 8) throw new Error('Senha deve ter pelo menos 8 caracteres.');
+      await api('/api/admin/utilizadores', {
+        method: 'POST',
+        body: JSON.stringify({
+          username,
+          password: senha,
+          nome_exibicao: nome || null,
+        }),
+      });
+      mostrarMsgUsers('Utilizador criado.', true);
+    } else {
+      const body = {
+        nome_exibicao: nome || null,
+        ativo: el('user-ativo').checked,
+      };
+      if (senha) {
+        if (senha.length < 8) throw new Error('Senha deve ter pelo menos 8 caracteres.');
+        body.password = senha;
+      }
+      await api(`/api/admin/utilizadores/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+      });
+      mostrarMsgUsers('Utilizador atualizado.', true);
+    }
+    fecharModalUtilizador();
+    await carregarUtilizadores();
+  } catch (e) {
+    msg.textContent = e.message || 'Erro ao guardar.';
+    msg.hidden = false;
+  }
+}
+
+async function alternarAtivoUtilizador(id, ativar) {
+  try {
+    await api(`/api/admin/utilizadores/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ ativo: Boolean(ativar) }),
+    });
+    mostrarMsgUsers(ativar ? 'Utilizador ativado.' : 'Utilizador desativado.', true);
+    await carregarUtilizadores();
+  } catch (e) {
+    mostrarMsgUsers(e.message || 'Erro ao alterar estado.', false);
+  }
+}
+
+async function carregarAuditoria() {
+  const tbody = el('tbody-auditoria');
+  const msg = el('audit-msg');
+  if (!tbody) return;
+  if (msg) msg.hidden = true;
+  tbody.innerHTML = '<tr><td colspan="5">A carregar…</td></tr>';
+  const params = new URLSearchParams();
+  params.set('page', String(auditPage));
+  params.set('limit', String(AUDIT_LIMIT));
+  const acao = el('audit-filtro-acao')?.value || '';
+  const actor = el('audit-filtro-actor')?.value.trim() || '';
+  const q = el('audit-filtro-q')?.value.trim() || '';
+  const de = el('audit-filtro-de')?.value || '';
+  const ate = el('audit-filtro-ate')?.value || '';
+  if (acao) params.set('acao', acao);
+  if (actor) params.set('actor', actor);
+  if (q) params.set('q', q);
+  if (de) params.set('de', de);
+  if (ate) params.set('ate', ate);
+  try {
+    const data = await api(`/api/admin/auditoria?${params}`);
+    const itens = data.itens || [];
+    auditPages = data.pages || 1;
+    auditPage = data.page || 1;
+    const info = el('audit-pagina-info');
+    if (info) info.textContent = `Página ${auditPage} de ${auditPages} (${data.total ?? 0})`;
+    el('btn-audit-prev').disabled = auditPage <= 1;
+    el('btn-audit-next').disabled = auditPage >= auditPages;
+    if (!itens.length) {
+      tbody.innerHTML = '<tr><td colspan="5">Sem registos para os filtros.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = itens
+      .map((row, idx) => {
+        const detalheId = `audit-detalhe-${idx}`;
+        const temDetalhe = row.antes != null || row.depois != null;
+        const antesJson = row.antes != null ? escapeHtml(JSON.stringify(row.antes, null, 2)) : '';
+        const depoisJson = row.depois != null ? escapeHtml(JSON.stringify(row.depois, null, 2)) : '';
+        return `<tr>
+          <td>${escapeHtml(formatarData(row.created_at))}</td>
+          <td>${escapeHtml(row.actor_username || '—')}</td>
+          <td><code class="admin-code">${escapeHtml(row.acao || '')}</code></td>
+          <td>${escapeHtml(row.resumo || '—')}</td>
+          <td>${
+            temDetalhe
+              ? `<button type="button" class="btn btn--fantasma btn--mini btn-audit-toggle" data-target="${detalheId}">Detalhe</button>`
+              : '—'
+          }</td>
+        </tr>
+        <tr id="${detalheId}" class="admin-audit-detalhe" hidden>
+          <td colspan="5">
+            <div class="admin-audit-detalhe__grid">
+              <div><strong>Antes</strong><pre class="admin-audit-pre">${antesJson || '—'}</pre></div>
+              <div><strong>Depois</strong><pre class="admin-audit-pre">${depoisJson || '—'}</pre></div>
+            </div>
+          </td>
+        </tr>`;
+      })
+      .join('');
+    tbody.querySelectorAll('.btn-audit-toggle').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const row = el(btn.dataset.target);
+        if (row) row.hidden = !row.hidden;
+      });
+    });
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="5">${escapeHtml(e.message || 'Erro')}</td></tr>`;
+    if (msg) {
+      msg.textContent = e.message || 'Erro ao carregar auditoria.';
+      msg.hidden = false;
+    }
+  }
 }
 
 /** @deprecated use mostrarHub — mantido só se algum código antigo chamar */
@@ -1655,8 +1901,10 @@ async function init() {
 
   el('hub-emissao')?.addEventListener('click', () => abrirModuloEmissao());
   el('hub-gestao')?.addEventListener('click', () => abrirModuloGestao());
+  el('hub-administracao')?.addEventListener('click', () => abrirModuloAdministracao());
   el('btn-voltar-hub-emissao')?.addEventListener('click', () => mostrarHub());
   el('btn-voltar-hub-gestao')?.addEventListener('click', () => mostrarHub());
+  el('btn-voltar-hub-admin')?.addEventListener('click', () => mostrarHub());
 
   el('btn-atualizar').addEventListener('click', () => carregarLista());
   el('filtro-status').addEventListener('change', () => carregarLista());
@@ -1667,8 +1915,43 @@ async function init() {
   el('chk-selecionar-todos')?.addEventListener('change', alternarSelecionarTodos);
   el('btn-atualizar-emitidas')?.addEventListener('click', () => carregarEmitidas());
 
-  document.querySelectorAll('.admin-tab').forEach((btn) => {
+  document.querySelectorAll('.admin-tab[data-tab]').forEach((btn) => {
     btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+  });
+  document.querySelectorAll('.admin-tab[data-admin-tab]').forEach((btn) => {
+    btn.addEventListener('click', () => switchAdminTab(btn.dataset.adminTab));
+  });
+
+  el('btn-user-novo')?.addEventListener('click', () => abrirModalUtilizadorNovo());
+  el('btn-users-recarregar')?.addEventListener('click', () => carregarUtilizadores());
+  el('btn-user-cancelar')?.addEventListener('click', () => fecharModalUtilizador());
+  el('modal-user-backdrop')?.addEventListener('click', () => fecharModalUtilizador());
+  el('btn-user-guardar')?.addEventListener('click', () => guardarUtilizador());
+
+  el('btn-audit-filtrar')?.addEventListener('click', () => {
+    auditPage = 1;
+    carregarAuditoria();
+  });
+  el('btn-audit-limpar')?.addEventListener('click', () => {
+    if (el('audit-filtro-acao')) el('audit-filtro-acao').value = '';
+    if (el('audit-filtro-actor')) el('audit-filtro-actor').value = '';
+    if (el('audit-filtro-q')) el('audit-filtro-q').value = '';
+    if (el('audit-filtro-de')) el('audit-filtro-de').value = '';
+    if (el('audit-filtro-ate')) el('audit-filtro-ate').value = '';
+    auditPage = 1;
+    carregarAuditoria();
+  });
+  el('btn-audit-prev')?.addEventListener('click', () => {
+    if (auditPage > 1) {
+      auditPage -= 1;
+      carregarAuditoria();
+    }
+  });
+  el('btn-audit-next')?.addEventListener('click', () => {
+    if (auditPage < auditPages) {
+      auditPage += 1;
+      carregarAuditoria();
+    }
   });
 
   el('carteira-protocolo').addEventListener('input', () => {
