@@ -20,6 +20,9 @@ let membrosOrder = 'asc';
 const MEMBROS_LIMIT = 50;
 /** Opções para selects da ficha (preenchidas pelos filtros da API). */
 let opcoesFichaMembros = { congregacoes: [], cargos: [], situacoes: [] };
+/** Chaves agrupadas em "Outros" no dashboard (filtro especial). */
+let dashOutrosCong = '';
+let dashOutrosCargo = '';
 /** Paginação da auditoria. */
 let auditPage = 1;
 let auditPages = 1;
@@ -1298,10 +1301,30 @@ function maxTotal(itens) {
 
 function valorFiltroDash(chave, tipo) {
   const k = String(chave || '').trim();
-  if (!k || k === 'Outros') return null;
+  if (!k) return null;
+  if (k === 'Outros') return '__outros__';
   if (tipo === 'congregacao' && (k === 'Sem congregação' || k === '—')) return '__vazio__';
   if (tipo === 'cargo' && (k === 'Sem cargo' || k === '—')) return '__vazio__';
   return k;
+}
+
+function rotuloFiltroDash(valor, tipo) {
+  if (valor === '__outros__') return 'Outros';
+  if (valor === '__vazio__') {
+    return tipo === 'cargo' ? 'Sem cargo' : 'Sem congregação';
+  }
+  return valor;
+}
+
+function garantirOpcaoFiltro(sel, valor, tipo) {
+  if (!sel || !valor) return;
+  if (![...sel.options].some((o) => o.value === valor)) {
+    const opt = document.createElement('option');
+    opt.value = valor;
+    opt.textContent = rotuloFiltroDash(valor, tipo);
+    sel.appendChild(opt);
+  }
+  sel.value = valor;
 }
 
 function renderBarras(containerId, itens, { alt = false, warn = false, filtroTipo = null } = {}) {
@@ -1320,9 +1343,11 @@ function renderBarras(containerId, itens, { alt = false, warn = false, filtroTip
       if (warn && idx === 1) fillCls += ' admin-bars__fill--warn';
       else if (alt && idx % 2 === 1) fillCls += ' admin-bars__fill--alt';
       const filtroVal = filtroTipo ? valorFiltroDash(item.chave, filtroTipo) : null;
+      const chavesOutros =
+        filtroVal === '__outros__' && Array.isArray(item.chaves) ? item.chaves.join('|') : '';
       const tag = filtroVal ? 'button' : 'div';
       const attrs = filtroVal
-        ? ` type="button" class="admin-bars__row" data-filtro-tipo="${escapeHtml(filtroTipo)}" data-filtro-valor="${escapeHtml(filtroVal)}" title="Filtrar lista por este cargo"`
+        ? ` type="button" class="admin-bars__row" data-filtro-tipo="${escapeHtml(filtroTipo)}" data-filtro-valor="${escapeHtml(filtroVal)}" data-filtro-chaves="${escapeHtml(chavesOutros)}" title="Filtrar lista por este cargo"`
         : ' class="admin-bars__row"';
       return `<${tag}${attrs}>
         <div class="admin-bars__meta">
@@ -1348,9 +1373,11 @@ function renderRankingCongregacoes(itens) {
       const total = Number(item.total) || 0;
       const pct = Math.round((total / max) * 100);
       const filtroVal = valorFiltroDash(item.chave, 'congregacao');
+      const chavesOutros =
+        filtroVal === '__outros__' && Array.isArray(item.chaves) ? item.chaves.join('|') : '';
       const tag = filtroVal ? 'button' : 'div';
       const attrs = filtroVal
-        ? ` type="button" class="admin-rank__row" data-filtro-tipo="congregacao" data-filtro-valor="${escapeHtml(filtroVal)}" title="Filtrar lista por esta congregação"`
+        ? ` type="button" class="admin-rank__row" data-filtro-tipo="congregacao" data-filtro-valor="${escapeHtml(filtroVal)}" data-filtro-chaves="${escapeHtml(chavesOutros)}" title="Filtrar lista por esta congregação"`
         : ' class="admin-rank__row"';
       return `<${tag}${attrs}>
         <div class="admin-rank__meta">
@@ -1420,31 +1447,15 @@ function renderDashboard(data) {
   renderDashCarteiras(data?.carteiras);
 }
 
-function aplicarFiltroDashboard(tipo, valor) {
+function aplicarFiltroDashboard(tipo, valor, chavesOutros) {
   if (!tipo || !valor) return;
   membrosPage = 1;
   if (tipo === 'congregacao') {
-    const sel = el('membros-filtro-cong');
-    if (sel) {
-      if (![...sel.options].some((o) => o.value === valor)) {
-        const opt = document.createElement('option');
-        opt.value = valor;
-        opt.textContent = valor === '__vazio__' ? 'Sem congregação' : valor;
-        sel.appendChild(opt);
-      }
-      sel.value = valor;
-    }
+    dashOutrosCong = valor === '__outros__' ? String(chavesOutros || '') : '';
+    garantirOpcaoFiltro(el('membros-filtro-cong'), valor, 'congregacao');
   } else if (tipo === 'cargo') {
-    const sel = el('membros-filtro-cargo');
-    if (sel) {
-      if (![...sel.options].some((o) => o.value === valor)) {
-        const opt = document.createElement('option');
-        opt.value = valor;
-        opt.textContent = valor === '__vazio__' ? 'Sem cargo' : valor;
-        sel.appendChild(opt);
-      }
-      sel.value = valor;
-    }
+    dashOutrosCargo = valor === '__outros__' ? String(chavesOutros || '') : '';
+    garantirOpcaoFiltro(el('membros-filtro-cargo'), valor, 'cargo');
   }
   carregarListaMembros();
   el('gestao-vista-lista')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -1553,6 +1564,8 @@ function paramsFiltroMembros() {
   if (cong) params.set('congregacao', cong);
   if (sit) params.set('situacao', sit);
   if (cargo) params.set('cargo', cargo);
+  if (cong === '__outros__' && dashOutrosCong) params.set('outros_cong', dashOutrosCong);
+  if (cargo === '__outros__' && dashOutrosCargo) params.set('outros_cargo', dashOutrosCargo);
   params.set('sort', membrosSort);
   params.set('order', membrosOrder);
   return params;
@@ -2091,6 +2104,7 @@ async function init() {
     }
   });
   el('membros-filtro-cong')?.addEventListener('change', () => {
+    if (el('membros-filtro-cong')?.value !== '__outros__') dashOutrosCong = '';
     membrosPage = 1;
     carregarListaMembros();
   });
@@ -2099,6 +2113,7 @@ async function init() {
     carregarListaMembros();
   });
   el('membros-filtro-cargo')?.addEventListener('change', () => {
+    if (el('membros-filtro-cargo')?.value !== '__outros__') dashOutrosCargo = '';
     membrosPage = 1;
     carregarListaMembros();
   });
@@ -2106,12 +2121,12 @@ async function init() {
   el('dash-congregacoes')?.addEventListener('click', (ev) => {
     const btn = ev.target.closest('[data-filtro-tipo="congregacao"]');
     if (!btn) return;
-    aplicarFiltroDashboard(btn.dataset.filtroTipo, btn.dataset.filtroValor);
+    aplicarFiltroDashboard(btn.dataset.filtroTipo, btn.dataset.filtroValor, btn.dataset.filtroChaves);
   });
   el('dash-cargos')?.addEventListener('click', (ev) => {
     const btn = ev.target.closest('[data-filtro-tipo="cargo"]');
     if (!btn) return;
-    aplicarFiltroDashboard(btn.dataset.filtroTipo, btn.dataset.filtroValor);
+    aplicarFiltroDashboard(btn.dataset.filtroTipo, btn.dataset.filtroValor, btn.dataset.filtroChaves);
   });
   el('btn-membros-prev')?.addEventListener('click', () => {
     if (membrosPage > 1) {

@@ -741,13 +741,43 @@ function contagensOrdenadas(map, { top = null, labelVazio = 'Sem valor' } = {}) 
   const itens = [...map.entries()].map(([chave, total]) => ({
     chave: chave === '—' ? labelVazio : chave,
     total,
+    filtro: chave === '—' ? '__vazio__' : String(chave),
   }));
   itens.sort((a, b) => b.total - a.total || String(a.chave).localeCompare(String(b.chave), 'pt'));
   if (top == null || itens.length <= top) return itens;
-  const principais = itens.slice(0, top);
-  const resto = itens.slice(top).reduce((acc, x) => acc + x.total, 0);
-  if (resto > 0) principais.push({ chave: 'Outros', total: resto });
+  const principais = itens.slice(0, top).map(({ chave, total }) => ({ chave, total }));
+  const restoItens = itens.slice(top);
+  const resto = restoItens.reduce((acc, x) => acc + x.total, 0);
+  if (resto > 0) {
+    principais.push({
+      chave: 'Outros',
+      total: resto,
+      chaves: restoItens.map((x) => x.filtro),
+    });
+  }
   return principais;
+}
+
+/** Filtro "Outros" do dashboard: lista de valores (pipe) incl. token __vazio__. */
+function aplicarFiltroCampoOutros(qy, campo, chavesRaw) {
+  const chaves = String(chavesRaw || '')
+    .split('|')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (!chaves.length) return qy;
+  const temVazio = chaves.includes('__vazio__');
+  const vals = chaves.filter((c) => c !== '__vazio__');
+  const parts = [];
+  if (vals.length) {
+    const encoded = vals.map((v) => `"${String(v).replace(/"/g, '\\"')}"`).join(',');
+    parts.push(`${campo}.in.(${encoded})`);
+  }
+  if (temVazio) {
+    parts.push(`${campo}.is.null`);
+    parts.push(`${campo}.eq.`);
+  }
+  if (!parts.length) return qy;
+  return qy.or(parts.join(','));
 }
 
 function idadeEmAnos(dataNascIso, ref = new Date()) {
@@ -1154,9 +1184,11 @@ app.get('/api/admin/membros/dashboard', requireAdmin, async (req, res) => {
   }
 });
 
-function aplicarFiltrosMembrosQuery(query, { q, congregacao, situacao, cargo }) {
+function aplicarFiltrosMembrosQuery(query, { q, congregacao, situacao, cargo, outrosCong, outrosCargo }) {
   let qy = query;
-  if (congregacao === '__vazio__') {
+  if (congregacao === '__outros__') {
+    qy = aplicarFiltroCampoOutros(qy, 'congregacao', outrosCong);
+  } else if (congregacao === '__vazio__') {
     qy = qy.or('congregacao.is.null,congregacao.eq.');
   } else if (congregacao) {
     qy = qy.eq('congregacao', congregacao);
@@ -1166,7 +1198,9 @@ function aplicarFiltrosMembrosQuery(query, { q, congregacao, situacao, cargo }) 
   } else if (situacao) {
     qy = qy.eq('situacao_membro', situacao);
   }
-  if (cargo === '__vazio__') {
+  if (cargo === '__outros__') {
+    qy = aplicarFiltroCampoOutros(qy, 'cargo', outrosCargo);
+  } else if (cargo === '__vazio__') {
     qy = qy.or('cargo.is.null,cargo.eq.');
   } else if (cargo) {
     qy = qy.eq('cargo', cargo);
@@ -1190,6 +1224,8 @@ function lerFiltrosMembrosReq(req) {
     congregacao: String(req.query.congregacao || '').trim(),
     situacao: String(req.query.situacao || '').trim(),
     cargo: String(req.query.cargo || '').trim(),
+    outrosCong: String(req.query.outros_cong || '').trim(),
+    outrosCargo: String(req.query.outros_cargo || '').trim(),
   };
 }
 
