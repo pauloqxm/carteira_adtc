@@ -58,19 +58,51 @@ function setMensagemCadastro(texto, tipo) {
   box.hidden = !texto;
 }
 
+function ajustarTextoCadastroNovo({ direto = false } = {}) {
+  const card = document.querySelector('[data-etapa="cadastro-novo"] .card__texto');
+  if (!card || card.classList.contains('card__texto--peq')) return;
+  card.textContent = direto
+    ? 'Preencha os dados abaixo (os campos marcados são necessários para emitir a carteira) e envie a foto.'
+    : 'Seu CPF não foi localizado na base. Preencha os dados abaixo (os campos marcados são necessários para emitir a carteira) e envie a foto.';
+}
+
 function abrirCadastroNovoComCpf(digitosFormatados) {
   const form = el('form-cadastro-novo');
   if (form) {
     form.reset();
   }
   const cadCpf = el('cad-cpf');
-  if (cadCpf) cadCpf.value = digitosFormatados;
+  if (cadCpf) {
+    cadCpf.readOnly = true;
+    cadCpf.value = digitosFormatados;
+  }
   limparFotoNovo();
+  ajustarTextoCadastroNovo({ direto: false });
   setMensagemCadastro(
     `CPF ${digitosFormatados} não constava na base. Preencha os campos obrigatórios e anexe a foto; a secretaria analisará a solicitação.`,
     'info',
   );
   mostrarEtapa('cadastro-novo');
+}
+
+/** Abre o formulário de novo cadastro diretamente (ex.: botão do painel admin). */
+function abrirCadastroNovoDireto() {
+  const form = el('form-cadastro-novo');
+  if (form) form.reset();
+  const cadCpf = el('cad-cpf');
+  if (cadCpf) {
+    cadCpf.readOnly = false;
+    cadCpf.value = '';
+    cadCpf.removeAttribute('readonly');
+  }
+  limparFotoNovo();
+  ajustarTextoCadastroNovo({ direto: true });
+  setMensagemCadastro(
+    'Cadastro iniciado pelo painel. Informe o CPF e os demais dados obrigatórios; anexe a foto para enviar a solicitação.',
+    'info',
+  );
+  mostrarEtapa('cadastro-novo');
+  el('cad-nome')?.focus();
 }
 
 async function onBuscarCpf() {
@@ -237,6 +269,14 @@ function init() {
       if (ev.key === 'Enter') onBuscarCpf();
     });
   }
+  const cadCpfInput = el('cad-cpf');
+  if (cadCpfInput) {
+    cadCpfInput.addEventListener('input', () => {
+      if (cadCpfInput.readOnly) return;
+      const d = apenasDigitosCpf(cadCpfInput.value);
+      cadCpfInput.value = formatarCpfMascara(d);
+    });
+  }
   el('btn-buscar')?.addEventListener('click', onBuscarCpf);
   el('btn-voltar-cpf')?.addEventListener('click', () => {
     membroSelecionado = null;
@@ -270,6 +310,12 @@ function init() {
     onFotoPronta: () => {},
     onFotoRemovida: () => {},
   });
+
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('novo') === '1') {
+    abrirCadastroNovoDireto();
+    return;
+  }
 
   mostrarEtapa('cpf');
 }

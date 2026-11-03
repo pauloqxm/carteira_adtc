@@ -1825,62 +1825,11 @@ function setCodigoFichaEditavel(editavel) {
   cod.title = editavel ? 'Informe o código do novo membro' : 'Código não pode ser alterado';
 }
 
-function limparCamposFicha() {
-  el('ficha-membro-id').value = '';
-  el('ficha-nome').value = '';
-  el('ficha-cod').value = '';
-  el('ficha-cpf').value = '';
-  el('ficha-telefone').value = '';
-  el('ficha-situacao').value = 'ATIVO';
-  el('ficha-data-nasc').value = '';
-  el('ficha-data-batismo').value = '';
-  el('ficha-nacionalidade').value = 'BRASIL';
-  preencherSelectFicha(el('ficha-congregacao'), opcoesFichaMembros.congregacoes, '');
-  preencherSelectFicha(el('ficha-estado-civil'), [], '');
-  preencherSelectFicha(el('ficha-cargo'), opcoesFichaMembros.cargos, '');
-  setSexoSelect(el('ficha-sexo'), '');
-  const tbody = el('tbody-ficha-sols');
-  if (tbody) tbody.innerHTML = '';
-}
-
-async function sugerirProximoCodMembro() {
-  try {
-    const params = new URLSearchParams({
-      page: '1',
-      limit: '1',
-      sort: 'cod_membro',
-      order: 'desc',
-    });
-    const data = await api(`/api/admin/membros?${params}`);
-    const max = Number(data.itens?.[0]?.cod_membro);
-    return Number.isInteger(max) && max >= 1 ? max + 1 : 1;
-  } catch {
-    return '';
-  }
-}
-
-async function abrirFichaNovoMembro() {
+function abrirFormularioNovoMembroPublico() {
   if (!podeEditar()) return;
-  const msg = el('ficha-msg');
-  if (msg) {
-    msg.hidden = true;
-    msg.classList.remove('admin-msg--ok');
-  }
-  mostrarVistaFicha();
-  el('ficha-titulo').textContent = 'Novo membro';
-  const btnGuardar = el('btn-ficha-guardar');
-  if (btnGuardar) btnGuardar.textContent = 'Criar membro';
-  const blocoSols = el('ficha-bloco-sols');
-  if (blocoSols) blocoSols.hidden = true;
-  setCodigoFichaEditavel(true);
-  if (!opcoesFichaMembros.congregacoes.length) {
-    await carregarFiltrosMembros();
-  }
-  limparCamposFicha();
-  atualizarBotaoExcluirFicha();
-  const prox = await sugerirProximoCodMembro();
-  if (prox !== '') el('ficha-cod').value = String(prox);
-  el('ficha-nome')?.focus();
+  const url = new URL('/', window.location.origin);
+  url.searchParams.set('novo', '1');
+  window.open(url.toString(), '_blank', 'noopener,noreferrer');
 }
 
 function mostrarVistaListaMembros() {
@@ -2318,8 +2267,8 @@ async function init() {
     carregarListaMembros();
   });
   el('btn-membros-atualizar')?.addEventListener('click', () => carregarGestaoMembros());
-  el('btn-membro-novo')?.addEventListener('click', () => abrirFichaNovoMembro());
-  el('btn-membro-novo-topo')?.addEventListener('click', () => abrirFichaNovoMembro());
+  el('btn-membro-novo')?.addEventListener('click', () => abrirFormularioNovoMembroPublico());
+  el('btn-membro-novo-topo')?.addEventListener('click', () => abrirFormularioNovoMembroPublico());
   el('btn-membros-export-csv')?.addEventListener('click', () => exportarPlanilhaMembros('csv'));
   el('btn-membros-export-xlsx')?.addEventListener('click', () => exportarPlanilhaMembros('xlsx'));
   el('tabela-membros')?.addEventListener('click', (ev) => {
